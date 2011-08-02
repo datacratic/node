@@ -30,7 +30,7 @@
 #include <string.h> // memcpy
 
 #ifdef __MINGW32__
-# include "platform.h"
+# include <platform.h>
 # include <platform_win32_winsock.h> // htons, htonl
 #endif
 
@@ -134,7 +134,10 @@ Buffer* Buffer::New(size_t length) {
 
   Local<Value> arg = Integer::NewFromUnsigned(length);
   Local<Object> b = constructor_template->GetFunction()->NewInstance(1, &arg);
-  if (b.IsEmpty()) return NULL;
+
+  // If the constructor threw an exception, we can't use the returned value
+  if (b.IsEmpty())
+    return 0;
 
   return ObjectWrap::Unwrap<Buffer>(b);
 }
@@ -149,6 +152,10 @@ Buffer* Buffer::New(char* data, size_t length) {
   Buffer *buffer = ObjectWrap::Unwrap<Buffer>(obj);
   buffer->Replace(data, length, NULL, NULL);
 
+  // If the constructor threw an exception, we can't use the returned value
+  if (obj.IsEmpty())
+    return 0;
+
   return buffer;
 }
 
@@ -162,6 +169,10 @@ Buffer* Buffer::New(char *data, size_t length,
 
   Buffer *buffer = ObjectWrap::Unwrap<Buffer>(obj);
   buffer->Replace(data, length, callback, hint);
+
+  // If the constructor threw an exception, we can't use the returned value
+  if (obj.IsEmpty())
+    return 0;
 
   return buffer;
 }
@@ -447,15 +458,7 @@ Handle<Value> Buffer::Utf8Write(const Arguments &args) {
 
   size_t offset = args[1]->Uint32Value();
 
-  int length = s->Length();
-
-  if (length == 0) {
-    constructor_template->GetFunction()->Set(chars_written_sym,
-                                             Integer::New(0));
-    return scope.Close(Integer::New(0));
-  }
-
-  if (length > 0 && offset >= buffer->length_) {
+  if (s->Length() > 0 && offset >= buffer->length_) {
     return ThrowException(Exception::TypeError(String::New(
             "Offset is out of bounds")));
   }
@@ -476,13 +479,7 @@ Handle<Value> Buffer::Utf8Write(const Arguments &args) {
   constructor_template->GetFunction()->Set(chars_written_sym,
                                            Integer::New(char_written));
 
-  if (written > 0 && p[written-1] == '\0' && char_written == length) {
-    uint16_t last_char;
-    s->Write(&last_char, length - 1, 1, String::NO_HINTS);
-    if (last_char != 0 || written > s->Utf8Length()) {
-      written--;
-    }
-  }
+  if (written > 0 && p[written-1] == '\0') written--;
 
   return scope.Close(Integer::New(written));
 }
@@ -509,7 +506,7 @@ Handle<Value> Buffer::Ucs2Write(const Arguments &args) {
 
   size_t max_length = args[2]->IsUndefined() ? buffer->length_ - offset
                                              : args[2]->Uint32Value();
-  max_length = MIN(buffer->length_ - offset, max_length) / 2;
+  max_length = MIN(buffer->length_ - offset, max_length);
 
   uint16_t* p = (uint16_t*)(buffer->data_ + offset);
 
@@ -517,10 +514,6 @@ Handle<Value> Buffer::Ucs2Write(const Arguments &args) {
                          0,
                          max_length,
                          String::HINT_MANY_WRITES_EXPECTED);
-
-  constructor_template->GetFunction()->Set(chars_written_sym,
-                                           Integer::New(written));
-
   return scope.Close(Integer::New(written * 2));
 }
 
@@ -692,11 +685,6 @@ Handle<Value> Buffer::ByteLength(const Arguments &args) {
 
 Handle<Value> Buffer::MakeFastBuffer(const Arguments &args) {
   HandleScope scope;
-
-  if (!Buffer::HasInstance(args[0])) {
-    return ThrowException(Exception::TypeError(String::New(
-            "First argument must be a Buffer")));
-  }
 
   Buffer *buffer = ObjectWrap::Unwrap<Buffer>(args[0]->ToObject());
   Local<Object> fast_buffer = args[1]->ToObject();;
