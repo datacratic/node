@@ -43,12 +43,12 @@ var backend = http.createServer(function(req, res) {
   res.end();
 });
 
-var proxy_client = http.createClient(BACKEND_PORT);
 var proxy = http.createServer(function(req, res) {
   common.debug('proxy req headers: ' + JSON.stringify(req.headers));
-  var proxy_req = proxy_client.request(url.parse(req.url).pathname);
-  proxy_req.end();
-  proxy_req.addListener('response', function(proxy_res) {
+  var proxy_req = http.get({
+    port: BACKEND_PORT,
+    path: url.parse(req.url).pathname
+  }, function(proxy_res) {
 
     common.debug('proxy res headers: ' + JSON.stringify(proxy_res.headers));
 
@@ -58,11 +58,11 @@ var proxy = http.createServer(function(req, res) {
 
     res.writeHead(proxy_res.statusCode, proxy_res.headers);
 
-    proxy_res.addListener('data', function(chunk) {
+    proxy_res.on('data', function(chunk) {
       res.write(chunk);
     });
 
-    proxy_res.addListener('end', function() {
+    proxy_res.on('end', function() {
       res.end();
       common.debug('proxy res');
     });
@@ -76,10 +76,10 @@ function startReq() {
   nlistening++;
   if (nlistening < 2) return;
 
-  var client = http.createClient(PROXY_PORT);
-  var req = client.request('/test');
-  common.debug('client req');
-  req.addListener('response', function(res) {
+  var client = http.get({
+    port: PROXY_PORT,
+    path: '/test'
+  }, function(res) {
     common.debug('got res');
     assert.equal(200, res.statusCode);
 
@@ -88,14 +88,14 @@ function startReq() {
     assert.deepEqual(cookies, res.headers['set-cookie']);
 
     res.setEncoding('utf8');
-    res.addListener('data', function(chunk) { body += chunk; });
-    res.addListener('end', function() {
+    res.on('data', function(chunk) { body += chunk; });
+    res.on('end', function() {
       proxy.close();
       backend.close();
       common.debug('closed both');
     });
   });
-  req.end();
+  common.debug('client req');
 }
 
 common.debug('listen proxy');
@@ -104,6 +104,6 @@ proxy.listen(PROXY_PORT, startReq);
 common.debug('listen backend');
 backend.listen(BACKEND_PORT, startReq);
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.equal(body, 'hello world\n');
 });

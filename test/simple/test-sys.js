@@ -37,7 +37,7 @@ assert.equal('Sun, 14 Feb 2010 11:48:40 GMT',
 assert.equal("'\\n\\u0001'", common.inspect('\n\u0001'));
 
 assert.equal('[]', common.inspect([]));
-assert.equal('[]', common.inspect(Object.create([])));
+assert.equal('{}', common.inspect(Object.create([])));
 assert.equal('[ 1, 2 ]', common.inspect([1, 2]));
 assert.equal('[ 1, [ 2, 3 ] ]', common.inspect([1, [2, 3]]));
 
@@ -60,17 +60,29 @@ assert.equal('{ visible: 1 }',
     common.inspect(Object.create({},
     {visible: {value: 1, enumerable: true}, hidden: {value: 2}}))
 );
-assert.equal('{ [hidden]: 2, visible: 1 }',
-    common.inspect(Object.create({},
-    {visible: {value: 1, enumerable: true}, hidden: {value: 2}}), true)
-);
+
+// Due to the hash seed randomization it's not deterministic the order that
+// the following ways this hash is displayed.
+// See http://codereview.chromium.org/9124004/
+
+var out = common.inspect(Object.create({},
+    {visible: {value: 1, enumerable: true}, hidden: {value: 2}}), true);
+if (out !== '{ [hidden]: 2, visible: 1 }' &&
+    out !== '{ visible: 1, [hidden]: 2 }') {
+  assert.ok(false);
+}
+
 
 // Objects without prototype
-assert.equal('{ [hidden]: \'secret\', name: \'Tim\' }',
-    common.inspect(Object.create(null,
-                                 {name: {value: 'Tim', enumerable: true},
-                                   hidden: {value: 'secret'}}), true)
-);
+var out = common.inspect(Object.create(null,
+    { name: {value: 'Tim', enumerable: true},
+      hidden: {value: 'secret'}}), true);
+if (out !== "{ [hidden]: 'secret', name: 'Tim' }" &&
+    out !== "{ name: 'Tim', [hidden]: 'secret' }") {
+  assert(false);
+}
+
+
 assert.equal('{ name: \'Tim\' }',
     common.inspect(Object.create(null,
                                  {name: {value: 'Tim', enumerable: true},
@@ -91,9 +103,6 @@ assert.equal('{ writeonly: [Setter] }',
 var value = {};
 value['a'] = value;
 assert.equal('{ a: [Circular] }', common.inspect(value));
-value = Object.create([]);
-value.push(1);
-assert.equal('[ 1, length: 1 ]', common.inspect(value));
 
 // Array with dynamic properties
 value = [1, 2, 3];

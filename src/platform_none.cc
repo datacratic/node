@@ -42,16 +42,11 @@ const char* OS::GetProcessTitle(int *len) {
 }
 
 
-int OS::GetMemory(size_t *rss, size_t *vsize) {
+int OS::GetMemory(size_t *rss) {
   // Not implemented
   *rss = 0;
-  *vsize = 0;
   return 0;
 }
 
-int OS::GetExecutablePath(char *buffer, size_t* size) {
-  *size = 0;
-  return -1;
-}
 
 }  // namespace node

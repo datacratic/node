@@ -19,6 +19,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+
 var common = require('../common');
 var assert = require('assert');
 
@@ -28,7 +31,7 @@ var x = path.join(common.fixturesDir, 'x.txt');
 var expected = 'xyz';
 
 var server = net.createServer(function(socket) {
-  socket.addListener('receive', function(data) {
+  socket.on('receive', function(data) {
     found = data;
     client.close();
     socket.close();
@@ -39,7 +42,7 @@ var server = net.createServer(function(socket) {
 server.listen(common.PORT);
 
 var client = net.createConnection(common.PORT);
-client.addListener('connect', function() {
+client.on('connect', function() {
   fs.open(x, 'r').addCallback(function(fd) {
     fs.sendfile(client.fd, fd, 0, expected.length)
       .addCallback(function(size) {

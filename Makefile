@@ -1,8 +1,17 @@
 WAF=python tools/waf-light
 
-web_root = ryan@nodejs.org:~/web/nodejs.org/
+web_root = node@nodejs.org:~/web/nodejs.org/
+
+#
+# Because we recursively call make from waf we need to make sure that we are
+# using the correct make. Not all makes are GNU Make, but this likely only
+# works with gnu make. To deal with this we remember how the user invoked us
+# via a make builtin variable and use that in all subsequent operations
+#
+export NODE_MAKE := $(MAKE)
 
 all: program
+	@-[ -f out/Release/node ] && ls -lh out/Release/node
 
 all-progress:
 	@$(WAF) -p build
@@ -25,11 +34,18 @@ uninstall:
 test: all
 	python tools/test.py --mode=release simple message
 
+test-http1: all
+	python tools/test.py --mode=release --use-http1 simple message
+
 test-valgrind: all
 	python tools/test.py --mode=release --valgrind simple message
 
 test-all: all
 	python tools/test.py --mode=debug,release
+	make test-npm
+
+test-all-http1: all
+	python tools/test.py --mode=debug,release --use-http1
 
 test-all-valgrind: all
 	python tools/test.py --mode=debug,release --valgrind
@@ -52,51 +68,71 @@ test-pummel: all
 test-internet: all
 	python tools/test.py internet
 
-build/default/node: all
+test-npm: all
+	./node deps/npm/test/run.js
+
+test-npm-publish: all
+	npm_package_config_publishtest=true ./node deps/npm/test/run.js
+
+out/Release/node: all
 
 apidoc_sources = $(wildcard doc/api/*.markdown)
-apidocs = $(addprefix build/,$(apidoc_sources:.markdown=.html))
+apidocs = $(addprefix out/,$(apidoc_sources:.markdown=.html))
 
-apidoc_dirs = build/doc build/doc/api/ build/doc/api/assets
+apidoc_dirs = out/doc out/doc/api/ out/doc/api/assets out/doc/about out/doc/community out/doc/logos
 
-apiassets = $(subst api_assets,api/assets,$(addprefix build/,$(wildcard doc/api_assets/*)))
+apiassets = $(subst api_assets,api/assets,$(addprefix out/,$(wildcard doc/api_assets/*)))
 
 website_files = \
-	build/doc/index.html    \
-	build/doc/v0.4_announcement.html   \
-	build/doc/cla.html      \
-	build/doc/sh_main.js    \
-	build/doc/sh_javascript.min.js \
-	build/doc/sh_vim-dark.css \
-	build/doc/logo.png      \
-	build/doc/sponsored.png \
-  build/doc/favicon.ico   \
-	build/doc/pipe.css
+	out/doc/index.html    \
+	out/doc/v0.4_announcement.html   \
+	out/doc/cla.html      \
+	out/doc/sh_main.js    \
+	out/doc/sh_javascript.min.js \
+	out/doc/sh_vim-dark.css \
+	out/doc/logo.png      \
+	out/doc/sponsored.png \
+	out/doc/favicon.ico   \
+	out/doc/pipe.css \
+	out/doc/about/index.html \
+	out/doc/close-downloads.png \
+	out/doc/community/index.html \
+	out/doc/community/not-invented-here.png \
+	out/doc/download-logo.png \
+	out/doc/ebay-logo.png \
+	out/doc/footer-logo.png \
+	out/doc/icons.png \
+	out/doc/linkedin-logo.png \
+	out/doc/logos/index.html \
+	out/doc/microsoft-logo.png \
+	out/doc/platform-icons.png \
+	out/doc/ryan-speaker.jpg \
+	out/doc/yahoo-logo.png
 
-doc: build/default/node $(apidoc_dirs) $(website_files) $(apiassets) $(apidocs)
+doc docs: out/Release/node $(apidoc_dirs) $(website_files) $(apiassets) $(apidocs)
 
 $(apidoc_dirs):
 	mkdir -p $@
 
-build/doc/api/assets/%: doc/api_assets/% build/doc/api/assets/
+out/doc/api/assets/%: doc/api_assets/% out/doc/api/assets/
 	cp $< $@
 
-build/doc/%: doc/%
+out/doc/%: doc/%
 	cp $< $@
 
-build/doc/api/%.html: doc/api/%.markdown build/default/node $(apidoc_dirs) $(apiassets) tools/doctool/doctool.js
-	build/default/node tools/doctool/doctool.js doc/template.html $< > $@
+out/doc/api/%.html: doc/api/%.markdown out/Release/node $(apidoc_dirs) $(apiassets) tools/doctool/doctool.js
+	out/Release/node tools/doctool/doctool.js doc/template.html $< > $@
 
-build/doc/%:
+out/doc/%:
 
 website-upload: doc
-	scp -r build/doc/* $(web_root)
+	rsync -r out/doc/ node@nodejs.org:~/web/nodejs.org/
 
-docopen: build/doc/api/all.html
-	-google-chrome build/doc/api/all.html
+docopen: out/doc/api/all.html
+	-google-chrome out/doc/api/all.html
 
 docclean:
-	-rm -rf build/doc
+	-rm -rf out/doc
 
 clean:
 	$(WAF) clean
@@ -104,24 +140,50 @@ clean:
 
 distclean: docclean
 	-find tools -name "*.pyc" | xargs rm -f
-	-rm -rf build/ node node_g
+	-rm -rf dist-osx
+	-rm -rf out/ node node_g
 
 check:
 	@tools/waf-light check
 
-VERSION=$(shell git describe)
+VERSION=v$(shell python tools/getnodeversion.py)
 TARNAME=node-$(VERSION)
+TARBALL=$(TARNAME).tar.gz
+PKG=out/$(TARNAME).pkg
+
+packagemaker=/Developer/Applications/Utilities/PackageMaker.app/Contents/MacOS/PackageMaker
 
 #dist: doc/node.1 doc/api
-dist: doc
+dist: $(TARBALL) $(PKG)
+
+PKGDIR=out/dist-osx
+
+pkg: $(PKG)
+
+$(PKG):
+	-rm -rf $(PKGDIR)
+	$(WAF) configure --prefix=/usr/local --without-snapshot
+	DESTDIR=$(PKGDIR) $(WAF) install
+	$(packagemaker) \
+		--id "org.nodejs.NodeJS-$(VERSION)" \
+		--doc tools/osx-pkg.pmdoc \
+		--out $(PKG)
+
+$(TARBALL): out/doc
 	git archive --format=tar --prefix=$(TARNAME)/ HEAD | tar xf -
 	mkdir -p $(TARNAME)/doc
 	cp doc/node.1 $(TARNAME)/doc/node.1
-	cp -r build/doc/api $(TARNAME)/doc/api
+	cp -r out/doc/api $(TARNAME)/doc/api
 	rm -rf $(TARNAME)/deps/v8/test # too big
+	rm -rf $(TARNAME)/doc/logos # too big
 	tar -cf $(TARNAME).tar $(TARNAME)
 	rm -rf $(TARNAME)
 	gzip -f -9 $(TARNAME).tar
+
+dist-upload: $(TARBALL) $(PKG)
+	ssh node@nodejs.org mkdir -p web/nodejs.org/dist/$(VERSION)
+	scp $(TARBALL) node@nodejs.org:~/web/nodejs.org/dist/$(VERSION)/$(TARBALL)
+	scp $(PKG) node@nodejs.org:~/web/nodejs.org/dist/$(VERSION)/$(TARNAME).pkg
 
 bench:
 	 benchmark/http_simple_bench.sh
@@ -139,4 +201,4 @@ cpplint:
 
 lint: jslint cpplint
 
-.PHONY: lint cpplint jslint bench clean docopen docclean doc dist distclean check uninstall install all program staticlib dynamiclib test test-all website-upload
+.PHONY: lint cpplint jslint bench clean docopen docclean doc dist distclean dist-upload check uninstall install all program staticlib dynamiclib test test-all website-upload

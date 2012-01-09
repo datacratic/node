@@ -19,11 +19,15 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+
 var common = require('../common');
 var assert = require('assert');
 var net = require('net');
 
 var N = 160 * 1024;
+var part_N = N / 3;
 var chars_recved = 0;
 var npauses = 0;
 
@@ -36,8 +40,10 @@ for (var i = 0; i < N; i++) {
 console.log('start server on port ' + common.PORT);
 
 var server = net.createServer(function(connection) {
-  connection.addListener('connect', function() {
-    assert.equal(false, connection.write(body));
+  connection.on('connect', function() {
+    connection.write(body.slice(0, part_N));
+    connection.write(body.slice(part_N, 2 * part_N));
+    assert.equal(false, connection.write(body.slice(2 * part_N, N)));
     console.log('bufferSize: ' + connection.bufferSize);
     assert.ok(0 <= connection.bufferSize &&
               connection.bufferSize <= N);
@@ -49,7 +55,7 @@ server.listen(common.PORT, function() {
   var paused = false;
   var client = net.createConnection(common.PORT);
   client.setEncoding('ascii');
-  client.addListener('data', function(d) {
+  client.on('data', function(d) {
     chars_recved += d.length;
     console.log('got ' + chars_recved);
     if (!paused) {
@@ -67,7 +73,7 @@ server.listen(common.PORT, function() {
     }
   });
 
-  client.addListener('end', function() {
+  client.on('end', function() {
     server.close();
     client.end();
   });
@@ -75,7 +81,7 @@ server.listen(common.PORT, function() {
 
 
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.equal(N, chars_recved);
   assert.equal(true, npauses > 2);
 });

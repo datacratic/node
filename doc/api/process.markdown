@@ -80,10 +80,20 @@ Example: the definition of `console.log`
       process.stdout.write(d + '\n');
     };
 
+`process.stderr` and `process.stdout` are unlike other streams in Node in
+that writes to them are usually blocking.  They are blocking in the case
+that they refer to regular files or TTY file descriptors. In the case they
+refer to pipes, they are non-blocking like other streams.
+
 
 ### process.stderr
 
-A writable stream to stderr. Writes on this stream are blocking.
+A writable stream to stderr.
+
+`process.stderr` and `process.stdout` are unlike other streams in Node in
+that writes to them are usually blocking.  They are blocking in the case
+that they refer to regular files or TTY file descriptors. In the case they
+refer to pipes, they are non-blocking like other streams.
 
 
 ### process.stdin
@@ -162,7 +172,7 @@ Returns the current working directory of the process.
 An object containing the user environment. See environ(7).
 
 
-### process.exit(code=0)
+### process.exit([code])
 
 Ends the process with the specified `code`.  If omitted, exit uses the
 'success' code `0`.
@@ -228,6 +238,21 @@ A compiled-in property that exposes `NODE_VERSION`.
 
     console.log('Version: ' + process.version);
 
+### process.versions
+
+A property exposing version strings of node and its dependencies.
+
+    console.log(process.versions);
+
+Will output:
+
+    { node: '0.4.12',
+      v8: '3.1.8.26',
+      ares: '1.7.4',
+      ev: '4.4',
+      openssl: '1.0.0e-fips' }
+
+
 ### process.installPrefix
 
 A compiled-in property that exposes `NODE_PREFIX`.
@@ -235,7 +260,7 @@ A compiled-in property that exposes `NODE_PREFIX`.
     console.log('Prefix: ' + process.installPrefix);
 
 
-### process.kill(pid, signal='SIGTERM')
+### process.kill(pid, [signal])
 
 Send a signal to a process. `pid` is the process id and `signal` is the
 string describing the signal to send.  Signal names are strings like
@@ -271,6 +296,13 @@ The PID of the process.
 Getter/setter to set what is displayed in 'ps'.
 
 
+### process.arch
+
+What processor architecture you're running on: `'arm'`, `'ia32'`, or `'x64'`.
+
+    console.log('This processor architecture is ' + process.arch);
+
+
 ### process.platform
 
 What platform you're running on. `'linux2'`, `'darwin'`, etc.
@@ -280,7 +312,8 @@ What platform you're running on. `'linux2'`, `'darwin'`, etc.
 
 ### process.memoryUsage()
 
-Returns an object describing the memory usage of the Node process.
+Returns an object describing the memory usage of the Node process
+measured in bytes.
 
     var util = require('util');
 
@@ -289,7 +322,6 @@ Returns an object describing the memory usage of the Node process.
 This will generate:
 
     { rss: 4935680,
-      vsize: 41893888,
       heapTotal: 1826816,
       heapUsed: 650472 }
 
@@ -319,3 +351,7 @@ given, otherwise returns the current mask.
     console.log('Changed umask from: ' + oldmask.toString(8) +
                 ' to ' + newmask.toString(8));
 
+
+### process.uptime()
+
+Number of seconds Node has been running.

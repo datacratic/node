@@ -43,6 +43,7 @@ namespace node {
 using namespace v8;
 
 static char *process_title;
+double Platform::prog_start_time = Platform::GetUptime();
 
 char** Platform::SetupArgs(int argc, char *argv[]) {
   process_title = argc ? strdup(argv[0]) : NULL;
@@ -65,7 +66,7 @@ const char* Platform::GetProcessTitle(int *len) {
   return NULL;
 }
 
-int Platform::GetMemory(size_t *rss, size_t *vsize) {
+int Platform::GetMemory(size_t *rss) {
   kvm_t *kd = NULL;
   struct kinfo_proc *kinfo = NULL;
   pid_t pid;
@@ -81,7 +82,6 @@ int Platform::GetMemory(size_t *rss, size_t *vsize) {
   if (kinfo == NULL) goto error;
 
   *rss = kinfo->ki_rssize * page_size;
-  *vsize = kinfo->ki_size;
 
   kvm_close(kd);
 
@@ -92,20 +92,6 @@ error:
   return -1;
 }
 
-
-int Platform::GetExecutablePath(char* buffer, size_t* size) {
-  int mib[4];
-  mib[0] = CTL_KERN;
-  mib[1] = KERN_PROC;
-  mib[2] = KERN_PROC_PATHNAME;
-  mib[3] = -1;
-
-  if (sysctl(mib, 4, buffer, size, NULL, 0) == -1) {
-    return -1;
-  }
-  *size-=1;
-  return 0;
-}
 
 int Platform::GetCPUInfo(Local<Array> *cpus) {
   Local<Object> cpuinfo;
@@ -167,36 +153,7 @@ int Platform::GetCPUInfo(Local<Array> *cpus) {
   return 0;
 }
 
-double Platform::GetFreeMemory() {
-  double pagesize = static_cast<double>(sysconf(_SC_PAGESIZE));
-  unsigned long info;
-  size_t size = sizeof(info);
-
-  if (sysctlbyname("vm.stats.vm.v_free_count", &info, &size, NULL, 0) < 0) {
-    return -1;
-  }
-
-  return (static_cast<double>(info)) * pagesize;
-}
-
-double Platform::GetTotalMemory() {
-#if defined(HW_PHYSMEM64)
-  uint64_t info;
-  static int which[] = {CTL_HW, HW_PHYSMEM64};
-#else
-  unsigned int info;
-  static int which[] = {CTL_HW, HW_PHYSMEM};
-#endif
-  size_t size = sizeof(info);
-
-  if (sysctl(which, 2, &info, &size, NULL, 0) < 0) {
-    return -1;
-  }
-
-  return static_cast<double>(info);
-}
-
-double Platform::GetUptime() {
+double Platform::GetUptimeImpl() {
   time_t now;
   struct timeval info;
   size_t size = sizeof(info);
@@ -210,22 +167,10 @@ double Platform::GetUptime() {
   return static_cast<double>(now - info.tv_sec);
 }
 
-int Platform::GetLoadAvg(Local<Array> *loads) {
-  struct loadavg info;
-  size_t size = sizeof(info);
-  static int which[] = {CTL_VM, VM_LOADAVG};
 
-  if (sysctl(which, 2, &info, &size, NULL, 0) < 0) {
-    return -1;
-  }
-  (*loads)->Set(0, Number::New(static_cast<double>(info.ldavg[0])
-                               / static_cast<double>(info.fscale)));
-  (*loads)->Set(1, Number::New(static_cast<double>(info.ldavg[1])
-                               / static_cast<double>(info.fscale)));
-  (*loads)->Set(2, Number::New(static_cast<double>(info.ldavg[2])
-                               / static_cast<double>(info.fscale)));
-
-  return 0;
+Handle<Value> Platform::GetInterfaceAddresses() {
+  HandleScope scope;
+  return scope.Close(Object::New());
 }
 
 }  // namespace node

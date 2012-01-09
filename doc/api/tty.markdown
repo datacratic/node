@@ -5,8 +5,8 @@ Use `require('tty')` to access this module.
 Example:
 
     var tty = require('tty');
-    tty.setRawMode(true);
     process.stdin.resume();
+    tty.setRawMode(true);
     process.stdin.on('keypress', function(char, key) {
       if (key && key.ctrl && key.name == 'c') {
         console.log('graceful exit');
@@ -14,16 +14,6 @@ Example:
       }
     });
 
-
-
-### tty.open(path, args=[])
-
-Spawns a new process with the executable pointed to by `path` as the session
-leader to a new pseudo terminal.
-
-Returns an array `[slaveFD, childProcess]`. `slaveFD` is the file descriptor
-of the slave end of the pseudo terminal. `childProcess` is a child process
-object.
 
 
 ### tty.isatty(fd)
@@ -40,11 +30,11 @@ process's stdin fd to act either as a raw device or default.
 
 ### tty.setWindowSize(fd, row, col)
 
-`ioctl`s the window size settings to the file descriptor.
-
+This function was removed in v0.6.0.
 
 ### tty.getWindowSize(fd)
 
-Returns `[row, col]` for the TTY associated with the file descriptor.
+This function was removed in v0.6.0. Use `process.stdout.getWindowSize()`
+instead.
 
 

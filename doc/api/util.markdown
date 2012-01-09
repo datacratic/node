@@ -4,6 +4,37 @@ These functions are in the module `'util'`. Use `require('util')` to access
 them.
 
 
+### util.format()
+
+Returns a formatted string using the first argument as a `printf`-like format.
+
+The first argument is a string that contains zero or more *placeholders*.
+Each placeholder is replaced with the converted value from its corresponding
+argument. Supported placeholders are:
+
+* `%s` - String.
+* `%d` - Number (both integer and float).
+* `%j` - JSON.
+* `%%` - single percent sign (`'%'`). This does not consume an argument.
+
+If the placeholder does not have a corresponding argument, the placeholder is
+not replaced.
+
+    util.format('%s:%s', 'foo'); // 'foo:%s'
+
+If there are more arguments than placeholders, the extra arguments are
+converted to strings with `util.inspect()` and these strings are concatenated,
+delimited by a space.
+
+    util.format('%s:%s', 'foo', 'bar', 'baz'); // 'foo:bar baz'
+
+If the first argument is not a format string then `util.format()` returns
+a string that is the concatenation of all its arguments separated by spaces.
+Each argument is converted to a string with `util.inspect()`.
+
+    util.format(1, 2, 3); // '1 2 3'
+
+
 ### util.debug(string)
 
 A synchronous output function. Will block the process and
@@ -19,12 +50,12 @@ Output with timestamp on `stdout`.
     require('util').log('Timestamped message.');
 
 
-### util.inspect(object, showHidden=false, depth=2)
+### util.inspect(object, [showHidden], [depth], [colors])
 
 Return a string representation of `object`, which is useful for debugging.
 
 If `showHidden` is `true`, then the object's non-enumerable properties will be
-shown too.
+shown too. Defaults to `false`.
 
 If `depth` is provided, it tells `inspect` how many times to recurse while
 formatting the object. This is useful for inspecting large complicated objects.
@@ -32,11 +63,70 @@ formatting the object. This is useful for inspecting large complicated objects.
 The default is to only recurse twice.  To make it recurse indefinitely, pass
 in `null` for `depth`.
 
+If `colors` is `true`, the output will be styled with ANSI color codes.
+Defaults to `false`.
+
 Example of inspecting all properties of the `util` object:
 
     var util = require('util');
 
     console.log(util.inspect(util, true, null));
+
+
+### util.isArray(object)
+
+Returns `true` if the given "object" is an `Array`. `false` otherwise.
+
+    var util = require('util');
+
+    util.isArray([])
+      // true
+    util.isArray(new Array)
+      // true
+    util.isArray({})
+      // false
+
+
+### util.isRegExp(object)
+
+Returns `true` if the given "object" is a `RegExp`. `false` otherwise.
+
+    var util = require('util');
+
+    util.isRegExp(/some regexp/)
+      // true
+    util.isRegExp(new RegExp('another regexp'))
+      // true
+    util.isRegExp({})
+      // false
+
+
+### util.isDate(object)
+
+Returns `true` if the given "object" is a `Date`. `false` otherwise.
+
+    var util = require('util');
+
+    util.isDate(new Date())
+      // true
+    util.isDate(Date())
+      // false (without 'new' returns a String)
+    util.isDate({})
+      // false
+
+
+### util.isError(object)
+
+Returns `true` if the given "object" is an `Error`. `false` otherwise.
+
+    var util = require('util');
+
+    util.isError(new Error())
+      // true
+    util.isError(new TypeError())
+      // true
+    util.isError({ name: 'Error', message: 'an error occurred' })
+      // false
 
 
 ### util.pump(readableStream, writableStream, [callback])

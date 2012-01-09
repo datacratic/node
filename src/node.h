@@ -22,13 +22,65 @@
 #ifndef SRC_NODE_H_
 #define SRC_NODE_H_
 
-#include <ev.h>
-#include <eio.h>
+#ifdef _WIN32
+# ifndef BUILDING_NODE_EXTENSION
+#   define NODE_EXTERN __declspec(dllexport)
+# else
+#   define NODE_EXTERN __declspec(dllimport)
+# endif
+#else
+# define NODE_EXTERN /* nothing */
+#endif
+
+#ifdef BUILDING_NODE_EXTENSION
+# undef BUILDING_V8_SHARED
+# undef BUILDING_UV_SHARED
+# define USING_V8_SHARED 1
+# define USING_UV_SHARED 1
+#endif
+
+// This should be defined in make system.
+// See issue https://github.com/joyent/node/issues/1236
+#if defined(__MINGW32__) || defined(_MSC_VER)
+#ifndef _WIN32_WINNT
+# define _WIN32_WINNT   0x0501
+#endif
+
+#define NOMINMAX
+
+#endif
+
+#if defined(_MSC_VER)
+#define PATH_MAX MAX_PATH
+#endif
+
+#ifdef _WIN32
+# define SIGKILL         9
+#endif
+
+#include <uv.h>
 #include <v8.h>
 #include <sys/types.h> /* struct stat */
 #include <sys/stat.h>
+#include <assert.h>
 
 #include <node_object_wrap.h>
+
+#ifndef offset_of
+// g++ in strict mode complains loudly about the system offsetof() macro
+// because it uses NULL as the base address.
+#define offset_of(type, member) \
+  ((intptr_t) ((char *) &(((type *) 8)->member) - 8))
+#endif
+
+#ifndef container_of
+#define container_of(ptr, type, member) \
+  ((type *) ((char *) (ptr) - offset_of(type, member)))
+#endif
+
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(a) (sizeof((a)) / sizeof((a)[0]))
+#endif
 
 #ifndef NODE_STRINGIFY
 #define NODE_STRINGIFY(n) NODE_STRINGIFY_HELPER(n)
@@ -37,9 +89,15 @@
 
 namespace node {
 
-int Start (int argc, char *argv[]);
+int Start(int argc, char *argv[]);
 
-#define NODE_PSYMBOL(s) v8::Persistent<v8::String>::New(v8::String::NewSymbol(s))
+char** Init(int argc, char *argv[]);
+v8::Handle<v8::Object> SetupProcessObject(int argc, char *argv[]);
+void Load(v8::Handle<v8::Object> process);
+void EmitExit(v8::Handle<v8::Object> process);
+
+#define NODE_PSYMBOL(s) \
+  v8::Persistent<v8::String>::New(v8::String::NewSymbol(s))
 
 /* Converts a unixtime to V8 Date */
 #define NODE_UNIXTIME_V8(t) v8::Date::New(1000*static_cast<double>(t))
@@ -48,7 +106,8 @@ int Start (int argc, char *argv[]);
 #define NODE_DEFINE_CONSTANT(target, constant)                            \
   (target)->Set(v8::String::NewSymbol(#constant),                         \
                 v8::Integer::New(constant),                               \
-                static_cast<v8::PropertyAttribute>(v8::ReadOnly|v8::DontDelete))
+                static_cast<v8::PropertyAttribute>(                       \
+                    v8::ReadOnly|v8::DontDelete))
 
 #define NODE_SET_METHOD(obj, name, callback)                              \
   obj->Set(v8::String::NewSymbol(name),                                   \
@@ -64,10 +123,10 @@ do {                                                                      \
                                   __callback##_TEM);                      \
 } while (0)
 
-enum encoding {ASCII, UTF8, BASE64, UCS2, BINARY};
+enum encoding {ASCII, UTF8, BASE64, UCS2, BINARY, HEX};
 enum encoding ParseEncoding(v8::Handle<v8::Value> encoding_v,
                             enum encoding _default = BINARY);
-void FatalException(v8::TryCatch &try_catch);
+NODE_EXTERN void FatalException(v8::TryCatch &try_catch);
 void DisplayExceptionLine(v8::TryCatch &try_catch); // hack
 
 v8::Local<v8::Value> Encode(const void *buf, size_t len,
@@ -89,7 +148,7 @@ ssize_t DecodeWrite(char *buf,
 # define NODE_STAT        stat
 # define NODE_FSTAT       fstat
 # define NODE_STAT_STRUCT struct stat
-#else // __MINGW32__
+#else // _WIN32
 # define NODE_STAT        _stati64
 # define NODE_FSTAT       _fstati64
 # define NODE_STAT_STRUCT struct _stati64
@@ -99,12 +158,15 @@ v8::Local<v8::Object> BuildStatsObject(NODE_STAT_STRUCT *s);
 
 
 /**
- * Call this when your constructor is invoked as a regular function, e.g. Buffer(10) instead of new Buffer(10).
+ * Call this when your constructor is invoked as a regular function, e.g.
+ * Buffer(10) instead of new Buffer(10).
  * @param constructorTemplate Constructor template to instantiate from.
  * @param args The arguments object passed to your constructor.
  * @see v8::Arguments::IsConstructCall
  */
-v8::Handle<v8::Value> FromConstructorTemplate(v8::Persistent<v8::FunctionTemplate>& constructorTemplate, const v8::Arguments& args);
+v8::Handle<v8::Value> FromConstructorTemplate(
+    v8::Persistent<v8::FunctionTemplate>& constructorTemplate,
+    const v8::Arguments& args);
 
 
 static inline v8::Persistent<v8::Function>* cb_persist(
@@ -126,10 +188,21 @@ static inline void cb_destroy(v8::Persistent<v8::Function> * cb) {
   delete cb;
 }
 
-v8::Local<v8::Value> ErrnoException(int errorno,
-                                    const char *syscall = NULL,
-                                    const char *msg = "",
-                                    const char *path = NULL);
+NODE_EXTERN v8::Local<v8::Value> ErrnoException(int errorno,
+                                                const char *syscall = NULL,
+                                                const char *msg = "",
+                                                const char *path = NULL);
+
+NODE_EXTERN v8::Local<v8::Value> UVException(int errorno,
+                                             const char *syscall = NULL,
+                                             const char *msg     = NULL,
+                                             const char *path    = NULL);
+
+#ifdef _WIN32
+NODE_EXTERN v8::Local<v8::Value> WinapiErrnoException(int errorno,
+    const char *syscall = NULL,  const char *msg = "",
+    const char *path = NULL);
+#endif
 
 const char *signo_string(int errorno);
 
@@ -156,17 +229,30 @@ node_module_struct* get_builtin_module(const char *name);
           NULL,                    \
           __FILE__
 
-#define NODE_MODULE(modname, regfunc)   \
-  node::node_module_struct modname ## _module =    \
-  {                                     \
-      NODE_STANDARD_MODULE_STUFF,       \
-      regfunc,                          \
-      NODE_STRINGIFY(modname)           \
-  };
+#ifdef _WIN32
+# define NODE_MODULE_EXPORT __declspec(dllexport)
+#else
+# define NODE_MODULE_EXPORT /* empty */
+#endif
+
+#define NODE_MODULE(modname, regfunc)                                 \
+  extern "C" {                                                        \
+    NODE_MODULE_EXPORT node::node_module_struct modname ## _module =  \
+    {                                                                 \
+      NODE_STANDARD_MODULE_STUFF,                                     \
+      regfunc,                                                        \
+      NODE_STRINGIFY(modname)                                         \
+    };                                                                \
+  }
 
 #define NODE_MODULE_DECL(modname) \
-  extern node::node_module_struct modname ## _module;
+  extern "C" node::node_module_struct modname ## _module;
 
+NODE_EXTERN void SetErrno(uv_err_t err);
+NODE_EXTERN void MakeCallback(v8::Handle<v8::Object> object,
+                              const char* method,
+                              int argc,
+                              v8::Handle<v8::Value> argv[]);
 
 }  // namespace node
 #endif  // SRC_NODE_H_

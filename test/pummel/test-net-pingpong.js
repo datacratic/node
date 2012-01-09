@@ -19,6 +19,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+
 var common = require('../common');
 var assert = require('assert');
 var net = require('net');
@@ -45,7 +48,7 @@ function pingPongTest(port, host, on_complete) {
     socket.setNoDelay();
     socket.timeout = 0;
 
-    socket.addListener('data', function(data) {
+    socket.on('data', function(data) {
       console.log('server got: ' + JSON.stringify(data));
       assert.equal('open', socket.readyState);
       assert.equal(true, count <= N);
@@ -54,12 +57,12 @@ function pingPongTest(port, host, on_complete) {
       }
     });
 
-    socket.addListener('end', function() {
+    socket.on('end', function() {
       assert.equal('writeOnly', socket.readyState);
       socket.end();
     });
 
-    socket.addListener('close', function(had_error) {
+    socket.on('close', function(had_error) {
       assert.equal(false, had_error);
       assert.equal('closed', socket.readyState);
       socket.server.close();
@@ -71,12 +74,12 @@ function pingPongTest(port, host, on_complete) {
 
     client.setEncoding('utf8');
 
-    client.addListener('connect', function() {
+    client.on('connect', function() {
       assert.equal('open', client.readyState);
       client.write('PING');
     });
 
-    client.addListener('data', function(data) {
+    client.on('data', function(data) {
       console.log('client got: ' + data);
 
       assert.equal('PONG', data);
@@ -98,7 +101,7 @@ function pingPongTest(port, host, on_complete) {
       }
     });
 
-    client.addListener('close', function() {
+    client.on('close', function() {
       assert.equal(N + 1, count);
       assert.equal(true, sent_final_ping);
       if (on_complete) on_complete();
@@ -115,6 +118,6 @@ pingPongTest(common.PORT + 1, null);
 var solaris = /sunos/i.test(process.platform);
 if (!solaris) pingPongTest(common.PORT + 2, '::1');
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.equal(solaris ? 2 : 3, tests_run);
 });

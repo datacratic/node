@@ -37,13 +37,6 @@ Emitted when the underlying file descriptor has been closed. Not all streams
 will emit this.  (For example, an incoming HTTP request will not emit
 `'close'`.)
 
-### Event: 'fd'
-
-`function (fd) { }`
-
-Emitted when a file descriptor is received on the stream. Only UNIX streams
-support this functionality; all others will simply never emit this event.
-
 ### stream.readable
 
 A boolean that is `true` by default, but turns `false` after an `'error'`
@@ -78,6 +71,8 @@ Connects this read stream to `destination` WriteStream. Incoming
 data on this stream gets written to `destination`. The destination and source
 streams are kept in sync by pausing and resuming as necessary.
 
+This function returns the `destination` stream.
+
 Emulating the Unix `cat` command:
 
     process.stdin.resume();
@@ -98,9 +93,6 @@ This keeps `process.stdout` open so that "Goodbye" can be written at the end.
       process.stdout.write("Goodbye\n");
     });
 
-NOTE: If the source stream does not support `pause()` and `resume()`, this function
-adds simple definitions which simply emit `'pause'` and `'resume'` events on
-the source stream.
 
 ## Writable Stream
 
@@ -110,7 +102,7 @@ A `Writable Stream` has the following methods, members, and events.
 
 `function () { }`
 
-Emitted after a `write()` method was called that returned `false` to
+After a `write()` method returned `false`, this event is emitted to
 indicate that it is safe to write again.
 
 ### Event: 'error'
@@ -136,7 +128,7 @@ Emitted when the stream is passed to a readable stream's pipe method.
 A boolean that is `true` by default, but turns `false` after an `'error'`
 occurred or `end()` / `destroy()` was called.
 
-### stream.write(string, encoding='utf8', [fd])
+### stream.write(string, [encoding], [fd])
 
 Writes `string` with the given `encoding` to the stream.  Returns `true` if
 the string has been flushed to the kernel buffer.  Returns `false` to
@@ -157,6 +149,7 @@ Same as the above except with a raw buffer.
 ### stream.end()
 
 Terminates the stream with EOF or FIN.
+This call will allow queued write data to be sent before closing the stream.
 
 ### stream.end(string, encoding)
 
@@ -170,6 +163,7 @@ Same as above but with a `buffer`.
 ### stream.destroy()
 
 Closes the underlying file descriptor. Stream will not emit any more events.
+Any queued write data will not be sent.
 
 ### stream.destroySoon()
 

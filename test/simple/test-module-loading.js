@@ -19,6 +19,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+
 var common = require('../common');
 var assert = require('assert');
 var path = require('path');
@@ -143,14 +146,13 @@ require.extensions['.test'] = function(module, filename) {
 };
 
 assert.equal(require('../fixtures/registerExt2').custom, 'passed');
-common.debug('load modules by absolute id, then change require.paths, ' +
-             'and load another module with the same absolute id.');
-// this will throw if it fails.
-var foo = require('../fixtures/require-path/p1/foo');
-assert.ok(foo.bar.expect === foo.bar.actual);
 
 assert.equal(require('../fixtures/foo').foo, 'ok',
              'require module with no extension');
+
+assert.throws(function() {
+  require.paths;
+}, /removed/, 'Accessing require.paths should throw.');
 
 // Should not attempt to load a directory
 try {
@@ -174,7 +176,7 @@ try {
   require(loadOrder + 'file3');
 } catch (e) {
   // Not a real .node module, but we know we require'd the right thing.
-  assert.ok(e.message.match(/file3\.node/));
+  assert.ok(e.message.replace(/\\/g, '/').match(/file3\.node/));
 }
 assert.equal(require(loadOrder + 'file4').file4, 'file4.reg', msg);
 assert.equal(require(loadOrder + 'file5').file5, 'file5.reg2', msg);
@@ -182,12 +184,29 @@ assert.equal(require(loadOrder + 'file6').file6, 'file6/index.js', msg);
 try {
   require(loadOrder + 'file7');
 } catch (e) {
-  assert.ok(e.message.match(/file7\/index\.node/));
+  assert.ok(e.message.replace(/\\/g, '/').match(/file7\/index\.node/));
 }
 assert.equal(require(loadOrder + 'file8').file8, 'file8/index.reg', msg);
 assert.equal(require(loadOrder + 'file9').file9, 'file9/index.reg2', msg);
 
-process.addListener('exit', function() {
+
+// make sure that module.require() is the same as
+// doing require() inside of that module.
+var parent = require('../fixtures/module-require/parent/');
+var child = require('../fixtures/module-require/child/');
+assert.equal(child.loaded, parent.loaded);
+
+
+// #1357 Loading JSON files with require()
+var json = require('../fixtures/packages/main/package.json');
+assert.deepEqual(json, {
+  name: 'package-name',
+  version: '1.2.3',
+  main: 'package-main-module'
+});
+
+
+process.on('exit', function() {
   assert.ok(common.indirectInstanceOf(a.A, Function));
   assert.equal('A done', a.A());
 
@@ -207,3 +226,8 @@ process.addListener('exit', function() {
 
   console.log('exit');
 });
+
+
+// #1440 Loading files with a byte order marker.
+assert.equal(42, require('../fixtures/utf8-bom.js'));
+assert.equal(42, require('../fixtures/utf8-bom.json'));

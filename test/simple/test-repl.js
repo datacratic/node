@@ -27,11 +27,11 @@ common.globalCheck = false;
 var net = require('net'),
     repl = require('repl'),
     message = 'Read, Eval, Print Loop',
-    unix_socket_path = '/tmp/node-repl-sock',
     prompt_unix = 'node via Unix socket> ',
     prompt_tcp = 'node via TCP socket> ',
     prompt_multiline = '... ',
     server_tcp, server_unix, client_tcp, client_unix, timer;
+
 
 // absolute path to test/fixtures/a.js
 var moduleFilename = require('path').join(common.fixturesDir, 'a');
@@ -68,7 +68,7 @@ function error_test() {
   var read_buffer = '';
   client_unix.removeAllListeners('data');
 
-  client_unix.addListener('data', function(data) {
+  client_unix.on('data', function(data) {
     read_buffer += data.toString('ascii', 0, data.length);
     common.error('Unix data: ' + JSON.stringify(read_buffer) + ', expecting ' +
                  (client_unix.expect.exec ?
@@ -86,7 +86,7 @@ function error_test() {
         tcp_test();
       }
 
-    } else if (read_buffer === prompt_multiline) {
+    } else if (read_buffer.indexOf(prompt_multiline) !== -1) {
       // Check that you meant to send a multiline test
       assert.strictEqual(prompt_multiline, client_unix.expect);
       read_buffer = '';
@@ -118,17 +118,17 @@ function error_test() {
     // invalid input to JSON.parse error is special case of syntax error,
     // should throw
     { client: client_unix, send: 'JSON.parse(\'{invalid: \\\'json\\\'}\');',
-      expect: /^SyntaxError: Unexpected token ILLEGAL/ },
+      expect: /^SyntaxError: Unexpected token i/ },
     // Named functions can be used:
     { client: client_unix, send: 'function blah() { return 1; }',
       expect: prompt_unix },
     { client: client_unix, send: 'blah()',
-      expect: "1\n" + prompt_unix },
+      expect: '1\n' + prompt_unix },
     // Multiline object
     { client: client_unix, send: '{ a: ',
       expect: prompt_multiline },
     { client: client_unix, send: '1 }',
-      expect: "{ a: 1 }" },
+      expect: '{ a: 1 }' },
     // Multiline anonymous function with comment
     { client: client_unix, send: '(function () {',
       expect: prompt_multiline },
@@ -137,16 +137,15 @@ function error_test() {
     { client: client_unix, send: 'return 1;',
       expect: prompt_multiline },
     { client: client_unix, send: '})()',
-      expect: "1" },
+      expect: '1' }
   ]);
 }
 
 function tcp_test() {
   server_tcp = net.createServer(function(socket) {
     assert.strictEqual(server_tcp, socket.server);
-    assert.strictEqual(server_tcp.type, 'tcp4');
 
-    socket.addListener('end', function() {
+    socket.on('end', function() {
       socket.end();
     });
 
@@ -158,7 +157,7 @@ function tcp_test() {
 
     client_tcp = net.createConnection(common.PORT);
 
-    client_tcp.addListener('connect', function() {
+    client_tcp.on('connect', function() {
       assert.equal(true, client_tcp.readable);
       assert.equal(true, client_tcp.writable);
 
@@ -170,12 +169,12 @@ function tcp_test() {
         { client: client_tcp, send: 'a += 1\n',
           expect: ('12346' + '\n' + prompt_tcp) },
         { client: client_tcp,
-          send: 'require(\'' + moduleFilename + '\').number\n',
+          send: 'require(' + JSON.stringify(moduleFilename) + ').number\n',
           expect: ('42' + '\n' + prompt_tcp) }
       ]);
     });
 
-    client_tcp.addListener('data', function(data) {
+    client_tcp.on('data', function(data) {
       read_buffer += data.toString('ascii', 0, data.length);
       common.error('TCP data: ' + JSON.stringify(read_buffer) +
                    ', expecting ' + JSON.stringify(client_tcp.expect));
@@ -194,11 +193,11 @@ function tcp_test() {
       }
     });
 
-    client_tcp.addListener('error', function(e) {
+    client_tcp.on('error', function(e) {
       throw e;
     });
 
-    client_tcp.addListener('close', function() {
+    client_tcp.on('close', function() {
       server_tcp.close();
     });
   });
@@ -208,21 +207,20 @@ function tcp_test() {
 function unix_test() {
   server_unix = net.createServer(function(socket) {
     assert.strictEqual(server_unix, socket.server);
-    assert.strictEqual(server_unix.type, 'unix');
 
-    socket.addListener('end', function() {
+    socket.on('end', function() {
       socket.end();
     });
 
     repl.start(prompt_unix, socket).context.message = message;
   });
 
-  server_unix.addListener('listening', function() {
+  server_unix.on('listening', function() {
     var read_buffer = '';
 
-    client_unix = net.createConnection(unix_socket_path);
+    client_unix = net.createConnection(common.PIPE);
 
-    client_unix.addListener('connect', function() {
+    client_unix.on('connect', function() {
       assert.equal(true, client_unix.readable);
       assert.equal(true, client_unix.writable);
 
@@ -236,11 +234,11 @@ function unix_test() {
         { client: client_unix, send: 'a = 12345\n',
           expect: ('12345' + '\n' + prompt_unix) },
         { client: client_unix, send: '{a:1}\n',
-          expect: ('{ a: 1 }' + '\n' + prompt_unix) },
+          expect: ('{ a: 1 }' + '\n' + prompt_unix) }
       ]);
     });
 
-    client_unix.addListener('data', function(data) {
+    client_unix.on('data', function(data) {
       read_buffer += data.toString('ascii', 0, data.length);
       common.error('Unix data: ' + JSON.stringify(read_buffer) +
                    ', expecting ' + JSON.stringify(client_unix.expect));
@@ -259,16 +257,16 @@ function unix_test() {
       }
     });
 
-    client_unix.addListener('error', function(e) {
+    client_unix.on('error', function(e) {
       throw e;
     });
 
-    client_unix.addListener('close', function() {
+    client_unix.on('close', function() {
       server_unix.close();
     });
   });
 
-  server_unix.listen(unix_socket_path);
+  server_unix.listen(common.PIPE);
 }
 
 unix_test();

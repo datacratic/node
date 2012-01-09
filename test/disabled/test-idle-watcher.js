@@ -19,6 +19,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+
 var common = require('../common');
 var assert = require('assert');
 
@@ -31,6 +34,6 @@ idle.callback = function() {
 idle.setPriority(process.EVMAXPRI);
 idle.start();
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.ok(complete);
 });

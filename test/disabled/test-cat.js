@@ -19,6 +19,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+
 var common = require('../common.js');
 var assert = require('assert');
 var http = require('http');
@@ -67,7 +70,7 @@ promise.addErrback(function() {
   errors += 1;
 });
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.equal(2, successes);
   assert.equal(0, errors);
 });

@@ -1,6 +1,6 @@
 before
 
-node.js:134
+node.js:*
         throw e; // process.nextTick error, or 'error' event on first tick
-        ^
+              ^
 [object Object]

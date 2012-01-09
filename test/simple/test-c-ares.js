@@ -27,16 +27,6 @@ var dns = require('dns');
 
 // Try resolution without callback
 
-dns.getHostByName('localhost', function(error, result) {
-  console.dir(result);
-  assert.deepEqual(['127.0.0.1'], result);
-});
-
-dns.getHostByName('127.0.0.1', function(error, result) {
-  console.dir(result);
-  assert.deepEqual(['127.0.0.1'], result);
-});
-
 dns.lookup(null, function(error, result, addressType) {
   assert.equal(null, result);
   assert.equal(4, addressType);
@@ -52,15 +42,12 @@ dns.lookup('::1', function(error, result, addressType) {
   assert.equal(6, addressType);
 });
 
-dns.lookup('ipv6.google.com', function(error, result, addressType) {
-  if (error) throw error;
-  console.dir(arguments);
-  //assert.equal('string', typeof result);
-  assert.equal(6, addressType);
-});
-
-dns.resolve('127.0.0.1', 'PTR', function(error, domains) {
-  if (error) throw error;
-  assert.ok(Array.isArray(domains));
-});
-
+// Windows doesn't usually have an entry for localhost 127.0.0.1 in
+// C:\Windows\System32\drivers\etc\hosts
+// so we disable this test on Windows.
+if (process.platform != 'win32') {
+  dns.resolve('127.0.0.1', 'PTR', function(error, domains) {
+    if (error) throw error;
+    assert.ok(Array.isArray(domains));
+  });
+}

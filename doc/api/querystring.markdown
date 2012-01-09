@@ -3,31 +3,33 @@
 This module provides utilities for dealing with query strings.
 It provides the following methods:
 
-### querystring.stringify(obj, sep='&', eq='=')
+### querystring.stringify(obj, [sep], [eq])
 
 Serialize an object to a query string.
-Optionally override the default separator and assignment characters.
+Optionally override the default separator (`'&'`) and assignment (`'='`)
+characters.
 
 Example:
 
-    querystring.stringify({foo: 'bar'})
+    querystring.stringify({ foo: 'bar', baz: ['qux', 'quux'], corge: '' })
     // returns
-    'foo=bar'
+    'foo=bar&baz=qux&baz=quux&corge='
 
-    querystring.stringify({foo: 'bar', baz: 'bob'}, ';', ':')
+    querystring.stringify({foo: 'bar', baz: 'qux'}, ';', ':')
     // returns
-    'foo:bar;baz:bob'
+    'foo:bar;baz:qux'
 
-### querystring.parse(str, sep='&', eq='=')
+### querystring.parse(str, [sep], [eq])
 
 Deserialize a query string to an object.
-Optionally override the default separator and assignment characters.
+Optionally override the default separator (`'&'`) and assignment (`'='`)
+characters.
 
 Example:
 
-    querystring.parse('a=b&b=c')
+    querystring.parse('foo=bar&baz=qux&baz=quux&corge')
     // returns
-    { a: 'b', b: 'c' }
+    { foo: 'bar', baz: ['qux', 'quux'], corge: '' }
 
 ### querystring.escape
 

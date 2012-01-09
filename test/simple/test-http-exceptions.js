@@ -33,14 +33,13 @@ var server = http.createServer(function(req, res) {
 server.listen(common.PORT, function() {
   var req;
   for (var i = 0; i < 4; i += 1) {
-    req = http.createClient(common.PORT).request('GET', '/busy/' + i);
-    req.end();
+    req = http.get({ port: common.PORT, path: '/busy/' + i });
   }
 });
 
 var exception_count = 0;
 
-process.addListener('uncaughtException', function(err) {
+process.on('uncaughtException', function(err) {
   console.log('Caught an exception: ' + err);
   if (err.name === 'AssertionError') throw err;
   if (++exception_count == 4) process.exit(0);

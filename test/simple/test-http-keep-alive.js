@@ -22,10 +22,8 @@
 var common = require('../common');
 var assert = require('assert');
 var http = require('http');
-var util = require('util');
 
 var body = 'hello world\n';
-var headers = {'connection': 'keep-alive'};
 
 var server = http.createServer(function(req, res) {
   res.writeHead(200, {'Content-Length': body.length});
@@ -34,34 +32,37 @@ var server = http.createServer(function(req, res) {
 });
 
 var connectCount = 0;
+var name = 'localhost:' + common.PORT;
+var agent = new http.Agent({maxSockets: 1});
+var headers = {'connection': 'keep-alive'};
 
 server.listen(common.PORT, function() {
-  var client = http.createClient(common.PORT);
-
-  client.addListener('connect', function() {
-    common.error('CONNECTED');
-    connectCount++;
+  http.get({
+    path: '/', headers: headers, port: common.PORT, agent: agent
+  }, function(response) {
+    assert.equal(agent.sockets[name].length, 1);
+    assert.equal(agent.requests[name].length, 2);
   });
 
-  var request = client.request('GET', '/', headers);
-  request.end();
-  request.addListener('response', function(response) {
-    common.error('response start');
+  http.get({
+    path: '/', headers: headers, port: common.PORT, agent: agent
+  }, function(response) {
+    assert.equal(agent.sockets[name].length, 1);
+    assert.equal(agent.requests[name].length, 1);
+  });
 
-    response.addListener('end', function() {
-      common.error('response end');
-      var req = client.request('GET', '/', headers);
-      req.addListener('response', function(response) {
-        response.addListener('end', function() {
-          client.end();
-          server.close();
-        });
-      });
-      req.end();
+  http.get({
+    path: '/', headers: headers, port: common.PORT, agent: agent
+  }, function(response) {
+    response.on('end', function() {
+      assert.equal(agent.sockets[name].length, 1);
+      assert(!agent.requests.hasOwnProperty(name));
+      server.close();
     });
   });
 });
 
-process.addListener('exit', function() {
-  assert.equal(1, connectCount);
+process.on('exit', function() {
+  assert(!agent.sockets.hasOwnProperty(name));
+  assert(!agent.requests.hasOwnProperty(name));
 });

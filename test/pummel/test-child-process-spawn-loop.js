@@ -19,10 +19,15 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+
 var common = require('../common');
 var assert = require('assert');
 
 var spawn = require('child_process').spawn;
+
+var is_windows = process.platform === 'win32';
 
 var SIZE = 1000 * 1024;
 var N = 40;
@@ -33,16 +38,17 @@ function doSpawn(i) {
   var count = 0;
 
   child.stdout.setEncoding('ascii');
-  child.stdout.addListener('data', function(chunk) {
+  child.stdout.on('data', function(chunk) {
     count += chunk.length;
   });
 
-  child.stderr.addListener('data', function(chunk) {
+  child.stderr.on('data', function(chunk) {
     console.log('stderr: ' + chunk);
   });
 
-  child.addListener('exit', function() {
-    assert.equal(SIZE + 1, count); // + 1 for \n
+  child.on('exit', function() {
+    // + 1 for \n or + 2 for \r\n on Windows
+    assert.equal(SIZE + (is_windows ? 2 : 1), count);
     if (i < N) {
       doSpawn(i + 1);
     } else {
@@ -53,6 +59,6 @@ function doSpawn(i) {
 
 doSpawn(0);
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.ok(finished);
 });

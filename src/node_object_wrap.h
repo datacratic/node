@@ -22,12 +22,13 @@
 #ifndef object_wrap_h
 #define object_wrap_h
 
+#include <node.h>
 #include <v8.h>
 #include <assert.h>
 
 namespace node {
 
-class ObjectWrap {
+class NODE_EXTERN ObjectWrap {
  public:
   ObjectWrap ( ) {
     refs_ = 0;
@@ -67,6 +68,7 @@ class ObjectWrap {
 
   inline void MakeWeak (void) {
     handle_.MakeWeak(this, WeakCallback);
+    handle_.MarkIndependent();
   }
 
   /* Ref() marks the object as being attached to an event loop.

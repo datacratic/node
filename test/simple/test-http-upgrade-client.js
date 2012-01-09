@@ -32,7 +32,7 @@ var net = require('net');
 // Create a TCP server
 var srv = net.createServer(function(c) {
   var data = '';
-  c.addListener('data', function(d) {
+  c.on('data', function(d) {
     data += d.toString('utf8');
 
     c.write('HTTP/1.1 101\r\n');
@@ -43,7 +43,7 @@ var srv = net.createServer(function(c) {
     c.write('nurtzo');
   });
 
-  c.addListener('end', function() {
+  c.on('end', function() {
     c.end();
   });
 });
@@ -52,8 +52,8 @@ var gotUpgrade = false;
 
 srv.listen(common.PORT, '127.0.0.1', function() {
 
-  var hc = http.createClient(common.PORT, '127.0.0.1');
-  hc.addListener('upgrade', function(res, socket, upgradeHead) {
+  var req = http.get({ port: common.PORT });
+  req.on('upgrade', function(res, socket, upgradeHead) {
     // XXX: This test isn't fantastic, as it assumes that the entire response
     //      from the server will arrive in a single data callback
     assert.equal(upgradeHead, 'nurtzo');
@@ -69,9 +69,8 @@ srv.listen(common.PORT, '127.0.0.1', function() {
 
     gotUpgrade = true;
   });
-  hc.request('GET', '/').end();
 });
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.ok(gotUpgrade);
 });

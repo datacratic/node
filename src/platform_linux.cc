@@ -25,8 +25,6 @@
 #include <v8.h>
 
 #include <sys/param.h> // for MAXPATHLEN
-#include <sys/sysctl.h>
-#include <sys/sysinfo.h>
 #include <unistd.h> // getpagesize, sysconf
 #include <stdio.h> // sscanf, snprintf
 
@@ -36,38 +34,100 @@
 #include <stdlib.h> // free
 #include <string.h> // strdup
 
+/* GetInterfaceAddresses */
+#include <arpa/inet.h>
+#include <sys/types.h>
+#include <ifaddrs.h>
+#include <errno.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
+
+#include <time.h>
+
+#ifndef CLOCK_MONOTONIC
+# include <sys/sysinfo.h>
+#endif
+
+extern char **environ;
+
 namespace node {
 
 using namespace v8;
 
 static char buf[MAXPATHLEN + 1];
-static char *process_title;
+double Platform::prog_start_time = Platform::GetUptime();
+
+static struct {
+  char *str;
+  size_t len;
+} process_title;
 
 
 char** Platform::SetupArgs(int argc, char *argv[]) {
-  process_title = strdup(argv[0]);
-  return argv;
+  char **new_argv;
+  char **new_env;
+  size_t size;
+  int envc;
+  char *s;
+  int i;
+
+  for (envc = 0; environ[envc]; envc++);
+
+  s = envc ? environ[envc - 1] : argv[argc - 1];
+
+  process_title.str = argv[0];
+  process_title.len = s + strlen(s) + 1 - argv[0];
+
+  size = process_title.len;
+  size += (argc + 1) * sizeof(char **);
+  size += (envc + 1) * sizeof(char **);
+
+  if ((s = (char *) malloc(size)) == NULL) {
+    process_title.str = NULL;
+    process_title.len = 0;
+    return argv;
+  }
+
+  new_argv = (char **) s;
+  new_env = new_argv + argc + 1;
+  s = (char *) (new_env + envc + 1);
+  memcpy(s, process_title.str, process_title.len);
+
+  for (i = 0; i < argc; i++)
+    new_argv[i] = s + (argv[i] - argv[0]);
+  new_argv[argc] = NULL;
+
+  s += environ[0] - argv[0];
+
+  for (i = 0; i < envc; i++)
+    new_env[i] = s + (environ[i] - environ[0]);
+  new_env[envc] = NULL;
+
+  environ = new_env;
+  return new_argv;
 }
 
 
 void Platform::SetProcessTitle(char *title) {
-  if (process_title) free(process_title);
-  process_title = strdup(title);
-  prctl(PR_SET_NAME, process_title);
+  /* No need to terminate, last char is always '\0'. */
+  if (process_title.len)
+    strncpy(process_title.str, title, process_title.len - 1);
 }
 
 
 const char* Platform::GetProcessTitle(int *len) {
-  if (process_title) {
-    *len = strlen(process_title);
-    return process_title;
+  if (process_title.str) {
+    *len = strlen(process_title.str);
+    return process_title.str;
   }
-  *len = 0;
-  return NULL;
+  else {
+    *len = 0;
+    return NULL;
+  }
 }
 
 
-int Platform::GetMemory(size_t *rss, size_t *vsize) {
+int Platform::GetMemory(size_t *rss) {
   FILE *f = fopen("/proc/self/stat", "r");
   if (!f) return -1;
 
@@ -137,7 +197,6 @@ int Platform::GetMemory(size_t *rss, size_t *vsize) {
 
   /* Virtual memory size */
   if (fscanf (f, "%u ", &itmp) == 0) goto error; /* coverity[secure_coding] */
-  *vsize = (size_t) itmp;
 
   /* Resident set size */
   if (fscanf (f, "%u ", &itmp) == 0) goto error; /* coverity[secure_coding] */
@@ -161,13 +220,6 @@ error:
   return -1;
 }
 
-
-int Platform::GetExecutablePath(char* buffer, size_t* size) {
-  *size = readlink("/proc/self/exe", buffer, *size - 1);
-  if (*size <= 0) return -1;
-  buffer[*size] = '\0';
-  return 0;
-}
 
 int Platform::GetCPUInfo(Local<Array> *cpus) {
   HandleScope scope;
@@ -245,41 +297,100 @@ int Platform::GetCPUInfo(Local<Array> *cpus) {
   return 0;
 }
 
-double Platform::GetFreeMemory() {
-  double pagesize = static_cast<double>(sysconf(_SC_PAGESIZE));
-  double pages = static_cast<double>(sysconf(_SC_AVPHYS_PAGES));
-
-  return static_cast<double>(pages * pagesize);
-}
-
-double Platform::GetTotalMemory() {
-  double pagesize = static_cast<double>(sysconf(_SC_PAGESIZE));
-  double pages = static_cast<double>(sysconf(_SC_PHYS_PAGES));
-
-  return pages * pagesize;
-}
-
-double Platform::GetUptime() {
+double Platform::GetUptimeImpl() {
+#ifdef CLOCK_MONOTONIC
+  struct timespec now;
+  if (0 == clock_gettime(CLOCK_MONOTONIC, &now)) {
+    double uptime = now.tv_sec;
+    uptime += (double)now.tv_nsec / 1000000000.0;
+    return uptime;
+  }
+  return -1;
+#else
   struct sysinfo info;
-
   if (sysinfo(&info) < 0) {
     return -1;
   }
-
   return static_cast<double>(info.uptime);
+#endif
 }
 
-int Platform::GetLoadAvg(Local<Array> *loads) {
-  struct sysinfo info;
 
-  if (sysinfo(&info) < 0) {
-    return -1;
+bool IsInternal(struct ifaddrs* addr) {
+  return addr->ifa_flags & IFF_UP &&
+         addr->ifa_flags & IFF_RUNNING &&
+         addr->ifa_flags & IFF_LOOPBACK;
+}
+
+
+Handle<Value> Platform::GetInterfaceAddresses() {
+  HandleScope scope;
+  struct ::ifaddrs *addrs, *ent;
+  struct ::sockaddr_in *in4;
+  struct ::sockaddr_in6 *in6;
+  char ip[INET6_ADDRSTRLEN];
+  Local<Object> ret, o;
+  Local<String> name, ipaddr, family;
+  Local<Array> ifarr;
+
+  if (getifaddrs(&addrs) != 0) {
+    return ThrowException(ErrnoException(errno, "getifaddrs"));
   }
-  (*loads)->Set(0, Number::New(static_cast<double>(info.loads[0]) / 65536.0));
-  (*loads)->Set(1, Number::New(static_cast<double>(info.loads[1]) / 65536.0));
-  (*loads)->Set(2, Number::New(static_cast<double>(info.loads[2]) / 65536.0));
 
-  return 0;
+  ret = Object::New();
+
+  for (ent = addrs; ent != NULL; ent = ent->ifa_next) {
+    bzero(&ip, sizeof (ip));
+    if (!(ent->ifa_flags & IFF_UP && ent->ifa_flags & IFF_RUNNING)) {
+      continue;
+    }
+
+    if (ent->ifa_addr == NULL) {
+      continue;
+    }
+
+    /*
+     * On Linux getifaddrs returns information related to the raw underlying
+     * devices. We're not interested in this information.
+     */
+    if (ent->ifa_addr->sa_family == PF_PACKET)
+	    continue;
+
+    name = String::New(ent->ifa_name);
+    if (ret->Has(name)) {
+      ifarr = Local<Array>::Cast(ret->Get(name));
+    } else {
+      ifarr = Array::New();
+      ret->Set(name, ifarr);
+    }
+
+    if (ent->ifa_addr->sa_family == AF_INET6) {
+      in6 = (struct sockaddr_in6 *)ent->ifa_addr;
+      inet_ntop(AF_INET6, &(in6->sin6_addr), ip, INET6_ADDRSTRLEN);
+      family = String::New("IPv6");
+    } else if (ent->ifa_addr->sa_family == AF_INET) {
+      in4 = (struct sockaddr_in *)ent->ifa_addr;
+      inet_ntop(AF_INET, &(in4->sin_addr), ip, INET6_ADDRSTRLEN);
+      family = String::New("IPv4");
+    } else {
+      (void) strncpy(ip, "<unknown sa family>", INET6_ADDRSTRLEN);
+      family = String::New("<unknown>");
+    }
+
+    o = Object::New();
+    o->Set(String::New("address"), String::New(ip));
+    o->Set(String::New("family"), family);
+    o->Set(String::New("internal"), ent->ifa_flags & IFF_LOOPBACK ?
+	True() : False());
+
+    ifarr->Set(ifarr->Length(), o);
+
+  }
+
+  freeifaddrs(addrs);
+
+  return scope.Close(ret);
 }
+
 
 }  // namespace node

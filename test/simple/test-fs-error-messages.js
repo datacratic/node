@@ -19,6 +19,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+
 var common = require('../common');
 var assert = require('assert');
 
@@ -179,7 +182,7 @@ try {
   assert.ok(0 <= err.message.indexOf(fn));
 }
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.equal(expected, errors.length,
                'Test fs sync exceptions raised, got ' + errors.length +
                ' expected ' + expected);

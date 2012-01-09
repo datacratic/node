@@ -28,7 +28,7 @@ var called;
 
 process.kill(cat.pid, 0);
 
-cat.stdout.on('data', function(){
+cat.stdout.on('data', function() {
   called = true;
   process.kill(cat.pid, 'SIGKILL');
 });
@@ -36,6 +36,6 @@ cat.stdout.on('data', function(){
 // EPIPE when null sig fails
 cat.stdin.write('test');
 
-process.on('exit', function(){
+process.on('exit', function() {
   assert.ok(called);
 });

@@ -19,6 +19,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+
 var common = require('../common');
 var assert = require('assert');
 
@@ -37,7 +40,7 @@ var paused = false;
 
 var file = fs.ReadStream(fn);
 
-file.addListener('open', function(fd) {
+file.on('open', function(fd) {
   file.length = 0;
   callbacks.open++;
   assert.equal('number', typeof fd);
@@ -50,7 +53,7 @@ file.addListener('open', function(fd) {
   file.resume();
 });
 
-file.addListener('data', function(data) {
+file.on('data', function(data) {
   assert.ok(data instanceof Buffer);
   assert.ok(!paused);
   file.length += data.length;
@@ -67,12 +70,12 @@ file.addListener('data', function(data) {
 });
 
 
-file.addListener('end', function(chunk) {
+file.on('end', function(chunk) {
   callbacks.end++;
 });
 
 
-file.addListener('close', function() {
+file.on('close', function() {
   callbacks.close++;
   assert.ok(!file.readable);
 
@@ -87,7 +90,7 @@ file2.destroy(function(err) {
 
 var file3 = fs.createReadStream(fn, {encoding: 'utf8'});
 file3.length = 0;
-file3.addListener('data', function(data) {
+file3.on('data', function(data) {
   assert.equal('string', typeof(data));
   file3.length += data.length;
 
@@ -97,11 +100,11 @@ file3.addListener('data', function(data) {
   }
 });
 
-file3.addListener('close', function() {
+file3.on('close', function() {
   callbacks.close++;
 });
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.equal(1, callbacks.open);
   assert.equal(1, callbacks.end);
   assert.equal(1, callbacks.destroy);
@@ -114,22 +117,31 @@ process.addListener('exit', function() {
 
 var file4 = fs.createReadStream(rangeFile, {bufferSize: 1, start: 1, end: 2});
 var contentRead = '';
-file4.addListener('data', function(data) {
+file4.on('data', function(data) {
   contentRead += data.toString('utf-8');
 });
-file4.addListener('end', function(data) {
+file4.on('end', function(data) {
   assert.equal(contentRead, 'yz');
 });
 
 var file5 = fs.createReadStream(rangeFile, {bufferSize: 1, start: 1});
 file5.data = '';
-file5.addListener('data', function(data) {
+file5.on('data', function(data) {
   file5.data += data.toString('utf-8');
 });
-file5.addListener('end', function() {
+file5.on('end', function() {
   assert.equal(file5.data, 'yz\n');
 });
 
+// https://github.com/joyent/node/issues/2320
+var file6 = fs.createReadStream(rangeFile, {bufferSize: 1.23, start: 1});
+file6.data = '';
+file6.on('data', function(data) {
+  file6.data += data.toString('utf-8');
+});
+file6.on('end', function() {
+  assert.equal(file6.data, 'yz\n');
+});
 
 assert.throws(function() {
   fs.createReadStream(rangeFile, {start: 10, end: 2});

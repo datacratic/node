@@ -19,6 +19,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+
 var common = require('../common');
 var assert = require('assert');
 var net = require('net');
@@ -38,21 +41,21 @@ function fdPassingTest(path, port) {
   var initializeSender = function() {
     var fdHighway = new net.Socket();
 
-    fdHighway.addListener('connect', function() {
+    fdHighway.on('connect', function() {
       var sender = net.createServer(function(socket) {
         fdHighway.sendFD(socket);
         socket.flush();
         socket.forceClose(); // want to close() the fd, not shutdown()
       });
 
-      sender.addListener('listening', function() {
+      sender.on('listening', function() {
         var client = net.createConnection(port);
 
-        client.addListener('connect', function() {
+        client.on('connect', function() {
           client.write(message);
         });
 
-        client.addListener('data', function(data) {
+        client.on('data', function(data) {
           assert.equal(expectedData[0], data);
           if (expectedData.length > 1) {
             expectedData.shift();
@@ -75,7 +78,7 @@ function fdPassingTest(path, port) {
 
   };
 
-  receiver.addListener('output', function(data) {
+  receiver.on('output', function(data) {
     var initialized = false;
     if ((! initialized) && (data == 'ready')) {
       initializeSender();
@@ -86,6 +89,6 @@ function fdPassingTest(path, port) {
 
 fdPassingTest('/tmp/passing-socket-test', 31075);
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.equal(1, tests_run);
 });

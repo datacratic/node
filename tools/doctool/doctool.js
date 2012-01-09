@@ -88,6 +88,9 @@ function convertData(data) {
     .replace(/<hr><\/hr>/g, "<hr />")
     .replace(/(\<h[2-6])\>([^<]+)(\<\/h[1-6]\>)/gmi, function(o, ts, c, te) {
       return ts+' id="'+formatIdString(c)+'">'+c+te;
+    })
+    .replace(/(\<h[3-4][^>]+\>)([^<]+)(\<\/h[3-4]\>)/gmi, function(o, ts, c, te) {
+       return ts+c+' <a href="#'+formatIdString(c)+'">#</a>'+te;
     });
 
   return html;
@@ -107,6 +110,7 @@ if (argc > 3) {
     // go markdown.
     html = convertData(data);
     filename = path.basename(filename, '.markdown');
+    output = output.replace(/{{filename}}/g, filename);
 
     if (filename != "_toc" && filename != "index") {
       if (data) {

@@ -27,18 +27,20 @@
 
 #include <errno.h>
 #include <stdlib.h>
+#if defined(__MINGW32__)
 #include <sys/param.h> // for MAXPATHLEN
 #include <unistd.h> // getpagesize
+#endif
 
 #include <platform_win32.h>
-
-#include <platform_win32_winsock.cc>
+#include <psapi.h>
 
 namespace node {
 
 using namespace v8;
 
 static char *process_title = NULL;
+double Platform::prog_start_time = Platform::GetUptime();
 
 
 // Does the about the same as strerror(),
@@ -123,7 +125,7 @@ void Platform::SetProcessTitle(char *title) {
   length = MultiByteToWideChar(CP_UTF8, 0, title, -1, title_w, length);
   if (!length) {
     winapi_perror("MultiByteToWideChar");
-    delete title_w;
+    delete[] title_w;
     return;
   };
 
@@ -139,7 +141,7 @@ void Platform::SetProcessTitle(char *title) {
   free(process_title);
   process_title = strdup(title);
 
-  delete title_w;
+  delete[] title_w;
 }
 
 
@@ -196,39 +198,93 @@ const char* Platform::GetProcessTitle(int *len) {
 }
 
 
-int Platform::GetMemory(size_t *rss, size_t *vsize) {
-  *rss = 0;
-  *vsize = 0;
+int Platform::GetMemory(size_t *rss) {
+
+  HANDLE current_process = GetCurrentProcess();
+  PROCESS_MEMORY_COUNTERS pmc;
+
+  if ( !GetProcessMemoryInfo( current_process, &pmc, sizeof(pmc)) )
+  {
+    winapi_perror("GetProcessMemoryInfo");
+  }
+
+  *rss = pmc.WorkingSetSize;
+
+  return 0;
+}
+
+int Platform::GetCPUInfo(Local<Array> *cpus) {
+
+  HandleScope scope;
+  *cpus = Array::New();
+
+  for (int i = 0; i < 32; i++) {
+
+    char key[128] = "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\";
+    char processor_number[32];
+    itoa(i, processor_number, 10);
+    strncat(key, processor_number, 2);
+
+    HKEY processor_key = NULL;
+
+    DWORD cpu_speed = 0;
+    DWORD cpu_speed_length = sizeof(cpu_speed);
+
+    char cpu_brand[256];
+    DWORD cpu_brand_length = sizeof(cpu_brand);
+
+    if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE,
+        &processor_key) != ERROR_SUCCESS) {
+      if (i == 0) {
+        winapi_perror("RegOpenKeyEx");
+        return -1;
+      }
+
+      continue;
+    }
+
+    if (RegQueryValueEx(processor_key, "~MHz", NULL, NULL,
+                        (LPBYTE)&cpu_speed, &cpu_speed_length)
+                        != ERROR_SUCCESS) {
+      winapi_perror("RegQueryValueEx");
+      return -1;
+    }
+
+    if (RegQueryValueEx(processor_key, "ProcessorNameString", NULL, NULL,
+                        (LPBYTE)&cpu_brand, &cpu_brand_length)
+                        != ERROR_SUCCESS) {
+      winapi_perror("RegQueryValueEx");
+      return -1;
+    }
+
+    RegCloseKey(processor_key);
+
+    Local<Object> times_info = Object::New(); // FIXME - find times on windows
+    times_info->Set(String::New("user"), Integer::New(0));
+    times_info->Set(String::New("nice"), Integer::New(0));
+    times_info->Set(String::New("sys"), Integer::New(0));
+    times_info->Set(String::New("idle"), Integer::New(0));
+    times_info->Set(String::New("irq"), Integer::New(0));
+
+    Local<Object> cpu_info = Object::New();
+    cpu_info->Set(String::New("model"), String::New(cpu_brand));
+    cpu_info->Set(String::New("speed"), Integer::New(cpu_speed));
+    cpu_info->Set(String::New("times"), times_info);
+    (*cpus)->Set(i,cpu_info);
+  }
+
   return 0;
 }
 
 
-double Platform::GetFreeMemory() {
-  return -1;
+double Platform::GetUptimeImpl() {
+  return (double)GetTickCount()/1000.0;
 }
 
-double Platform::GetTotalMemory() {
-  return -1;
+Handle<Value> Platform::GetInterfaceAddresses() {
+  HandleScope scope;
+  return scope.Close(Object::New());
 }
 
-
-int Platform::GetExecutablePath(char* buffer, size_t* size) {
-  *size = 0;
-  return -1;
-}
-
-
-int Platform::GetCPUInfo(Local<Array> *cpus) {
-  return -1;
-}
-
-
-double Platform::GetUptime() {
-  return -1;
-}
-
-int Platform::GetLoadAvg(Local<Array> *loads) {
-  return -1;
-}
 
 } // namespace node

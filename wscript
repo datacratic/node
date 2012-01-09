@@ -37,8 +37,12 @@ APPNAME="node.js"
 sys.path.append(sys.argv[0] + '/tools');
 import js2c
 
+if sys.platform.startswith("cygwin"):
+  print "cygwin not supported"
+  sys.exit(1)
+
 srcdir = '.'
-blddir = 'build'
+blddir = 'out'
 supported_archs = ('arm', 'ia32', 'x64') # 'mips' supported by v8, but not node
 
 jobs=1
@@ -62,34 +66,41 @@ def set_options(opt):
   opt.tool_options('compiler_cc')
   opt.tool_options('misc')
   opt.add_option( '--libdir'
-		, action='store'
-		, type='string'
-		, default=False
-		, help='Install into this libdir [Default: ${PREFIX}/lib]'
-		)
+                , action='store'
+                , type='string'
+                , default=False
+                , help='Install into this libdir [Release: ${PREFIX}/lib]'
+                )
   opt.add_option( '--debug'
                 , action='store_true'
                 , default=False
-                , help='Build debug variant [Default: False]'
+                , help='Build debug variant [Release: False]'
                 , dest='debug'
                 )
   opt.add_option( '--profile'
                 , action='store_true'
                 , default=False
-                , help='Enable profiling [Default: False]'
+                , help='Enable profiling [Release: False]'
                 , dest='profile'
                 )
   opt.add_option( '--efence'
                 , action='store_true'
                 , default=False
-                , help='Build with -lefence for debugging [Default: False]'
+                , help='Build with -lefence for debugging [Release: False]'
                 , dest='efence'
+                )
+
+  opt.add_option( '--without-npm'
+                , action='store_true'
+                , default=False
+                , help='Don\'t install the bundled npm package manager [Release: False]'
+                , dest='without_npm'
                 )
 
   opt.add_option( '--without-snapshot'
                 , action='store_true'
                 , default=False
-                , help='Build without snapshotting V8 libraries. You might want to set this for cross-compiling. [Default: False]'
+                , help='Build without snapshotting V8 libraries. You might want to set this for cross-compiling. [Release: False]'
                 , dest='without_snapshot'
                 )
 
@@ -158,7 +169,29 @@ def set_options(opt):
                 )
 
 
-  opt.add_option('--shared-cares'
+  opt.add_option( '--shared-zlib'
+                , action='store_true'
+                , default=False
+                , help='Link to a shared zlib DLL instead of static linking'
+                , dest='shared_zlib'
+                )
+
+  opt.add_option( '--shared-zlib-includes'
+                , action='store'
+                , default=False
+                , help='Directory containing zlib header files'
+                , dest='shared_zlib_includes'
+                )
+
+  opt.add_option( '--shared-zlib-libpath'
+                , action='store'
+                , default=False
+                , help='A directory to search for the shared zlib DLL'
+                , dest='shared_zlib_libpath'
+                )
+
+
+  opt.add_option( '--shared-cares'
                 , action='store_true'
                 , default=False
                 , help='Link to a shared C-Ares DLL instead of static linking'
@@ -179,27 +212,6 @@ def set_options(opt):
                 , dest='shared_cares_libpath'
                 )
 
-
-  opt.add_option('--shared-libev'
-                , action='store_true'
-                , default=False
-                , help='Link to a shared libev DLL instead of static linking'
-                , dest='shared_libev'
-                )
-
-  opt.add_option( '--shared-libev-includes'
-                , action='store'
-                , default=False
-                , help='Directory containing libev header files'
-                , dest='shared_libev_includes'
-                )
-
-  opt.add_option( '--shared-libev-libpath'
-                , action='store'
-                , default=False
-                , help='A directory to search for the shared libev DLL'
-                , dest='shared_libev_libpath'
-                )
 
   opt.add_option( '--with-dtrace'
                 , action='store_true'
@@ -225,6 +237,23 @@ def set_options(opt):
                 , dest='dest_cpu'
                 )
 
+def get_node_version():
+  def get_define_value(lines, define):
+    for line in lines:
+      if define in line:
+        return line.split()[-1] #define <NAME> <VALUE>
+
+  lines = open("src/node_version.h").readlines()
+  node_major_version = get_define_value(lines, 'NODE_MAJOR_VERSION')
+  node_minor_version = get_define_value(lines, 'NODE_MINOR_VERSION')
+  node_patch_version = get_define_value(lines, 'NODE_PATCH_VERSION')
+  node_is_release    = get_define_value(lines, 'NODE_VERSION_IS_RELEASE')
+
+  return "%s.%s.%s%s" % ( node_major_version,
+                           node_minor_version,
+                           node_patch_version,
+                           node_is_release == "0" and "-pre" or ""
+                         )
 
 
 
@@ -242,7 +271,7 @@ def configure(conf):
     conf.env['LIBDIR'] = conf.env['PREFIX'] + '/lib'
 
   conf.env["USE_DEBUG"] = o.debug
-  # Snapshot building does noet seem to work on cygwin and mingw32
+  # Snapshot building does noet seem to work on mingw32
   conf.env["SNAPSHOT_V8"] = not o.without_snapshot and not sys.platform.startswith("win32")
   if sys.platform.startswith("sunos"):
     conf.env["SNAPSHOT_V8"] = False
@@ -250,16 +279,20 @@ def configure(conf):
 
   conf.env["USE_SHARED_V8"] = o.shared_v8 or o.shared_v8_includes or o.shared_v8_libpath or o.shared_v8_libname
   conf.env["USE_SHARED_CARES"] = o.shared_cares or o.shared_cares_includes or o.shared_cares_libpath
-  conf.env["USE_SHARED_LIBEV"] = o.shared_libev or o.shared_libev_includes or o.shared_libev_libpath
+  conf.env["USE_SHARED_ZLIB"] = o.shared_zlib or o.shared_zlib_includes or o.shared_zlib_libpath
 
   conf.env["USE_GDBJIT"] = o.use_gdbjit
+  conf.env['USE_NPM'] = not o.without_npm
+
+  if not conf.env["USE_SHARED_ZLIB"] and not sys.platform.startswith("win32"):
+    conf.env.append_value("LINKFLAGS", "-lz")
 
   conf.check(lib='dl', uselib_store='DL')
-  if not sys.platform.startswith("sunos") and not sys.platform.startswith("cygwin") and not sys.platform.startswith("win32"):
+  if not sys.platform.startswith("sunos") and not sys.platform.startswith("win32"):
     conf.env.append_value("CCFLAGS", "-rdynamic")
     conf.env.append_value("LINKFLAGS_DL", "-rdynamic")
 
-  if sys.platform.startswith("freebsd") or sys.platform.startswith("openbsd"):
+  if 'bsd' in sys.platform:
     conf.check(lib='kvm', uselib_store='KVM')
 
   #if Options.options.debug:
@@ -276,7 +309,7 @@ def configure(conf):
   if Options.options.efence:
     conf.check(lib='efence', libpath=['/usr/lib', '/usr/local/lib'], uselib_store='EFENCE')
 
-  if sys.platform.startswith("freebsd"):
+  if 'bsd' in sys.platform:
      if not conf.check(lib="execinfo",
                        includes=['/usr/include', '/usr/local/include'],
                        libpath=['/usr/lib', '/usr/local/lib'],
@@ -353,17 +386,26 @@ def configure(conf):
   elif 'DEST_CPU' in conf.env and conf.env['DEST_CPU']:
     conf.env['DEST_CPU'] = canonical_cpu_type(conf.env['DEST_CPU'])
 
-  conf.check(lib='rt', uselib_store='RT')
+  have_librt = conf.check(lib='rt', uselib_store='RT')
 
   if sys.platform.startswith("sunos"):
+    code =  """
+      #include <ifaddrs.h>
+      int main(void) {
+        struct ifaddrs hello;
+        return 0;
+      }
+    """
+
+    if conf.check_cc(msg="Checking for ifaddrs on solaris", fragment=code):
+      conf.env.append_value('CPPFLAGS',  '-DSUNOS_HAVE_IFADDRS')
+
     if not conf.check(lib='socket', uselib_store="SOCKET"):
       conf.fatal("Cannot find socket library")
     if not conf.check(lib='nsl', uselib_store="NSL"):
       conf.fatal("Cannot find nsl library")
     if not conf.check(lib='kstat', uselib_store="KSTAT"):
       conf.fatal("Cannot find kstat library")
-
-  conf.sub_config('deps/libeio')
 
   if conf.env['USE_SHARED_V8']:
     v8_includes = [];
@@ -387,48 +429,13 @@ def configure(conf):
                             libpath=v8_libpath):
         conf.fatal("Cannot find v8_g")
 
-  if sys.platform.startswith("win32"):
-    # On win32 CARES is always static, so we can call internal functions like ares_inet_pton et al. 
-    # CARES_STATICLIB must be defined or gcc will try to make DLL stub calls
-    conf.env.append_value('CPPFLAGS', '-DCARES_STATICLIB=1')
-    conf.sub_config('deps/c-ares')
-  elif conf.env['USE_SHARED_CARES']:
-    cares_includes = [];
-    if o.shared_cares_includes: cares_includes.append(o.shared_cares_includes);
-    cares_libpath = [];
-    if o.shared_cares_libpath: cares_libpath.append(o.shared_cares_libpath);
-    if not conf.check_cxx(lib='cares',
-                          header_name='ares.h',
-                          uselib_store='CARES',
-                          includes=cares_includes,
-                          libpath=cares_libpath):
-      conf.fatal("Cannot find c-ares")
-  else:
-    conf.sub_config('deps/c-ares')
-
-
-  if conf.env['USE_SHARED_LIBEV']:
-    libev_includes = [];
-    if o.shared_libev_includes: libev_includes.append(o.shared_libev_includes);
-    libev_libpath = [];
-    if o.shared_libev_libpath: libev_libpath.append(o.shared_libev_libpath);
-    if not conf.check_cxx(lib='ev', header_name='ev.h',
-                          uselib_store='EV',
-                          includes=libev_includes,
-                          libpath=libev_libpath):
-      conf.fatal("Cannot find libev")
-  else:
-    conf.sub_config('deps/libev')
-
-
-
   conf.define("HAVE_CONFIG_H", 1)
 
   if sys.platform.startswith("sunos"):
     conf.env.append_value ('CCFLAGS', '-threads')
     conf.env.append_value ('CXXFLAGS', '-threads')
     #conf.env.append_value ('LINKFLAGS', ' -threads')
-  elif not sys.platform.startswith("cygwin") and not sys.platform.startswith("win32"):
+  elif not sys.platform.startswith("win32"):
     threadflags='-pthread'
     conf.env.append_value ('CCFLAGS', threadflags)
     conf.env.append_value ('CXXFLAGS', threadflags)
@@ -458,12 +465,9 @@ def configure(conf):
       conf.env.append_value('CXXFLAGS', flags)
       conf.env.append_value('LINKFLAGS', flags)
 
-  # Needed for getaddrinfo in libeio
-  conf.env.append_value("CPPFLAGS", "-DX_STACKSIZE=%d" % (1024*64))
   # LFS
   conf.env.append_value('CPPFLAGS',  '-D_LARGEFILE_SOURCE')
   conf.env.append_value('CPPFLAGS',  '-D_FILE_OFFSET_BITS=64')
-  conf.env.append_value('CPPFLAGS',  '-DEV_MULTIPLICITY=0')
 
   # Makes select on windows support more than 64 FDs
   if sys.platform.startswith("win32"):
@@ -485,6 +489,9 @@ def configure(conf):
   else:
     conf.env.append_value('CPPFLAGS', '-DHAVE_FDATASYNC=0')
 
+  # arch
+  conf.env.append_value('CPPFLAGS', '-DARCH="' + conf.env['DEST_CPU'] + '"')
+
   # platform
   conf.env.append_value('CPPFLAGS', '-DPLATFORM="' + conf.env['DEST_OS'] + '"')
 
@@ -505,26 +512,23 @@ def configure(conf):
     conf.env.append_value('LINKFLAGS', '-pg')
 
   if sys.platform.startswith("win32"):
-    conf.env.append_value('LIB', 'ws2_32')
+    conf.env.append_value('LIB', 'psapi')
     conf.env.append_value('LIB', 'winmm')
+    # This enforces ws2_32 to be linked after crypto, otherwise the linker
+    # will run into undefined references from libcrypto.a
+    if not Options.options.use_openssl:
+      conf.env.append_value('LIB', 'ws2_32')
 
   conf.env.append_value('CPPFLAGS', '-Wno-unused-parameter');
   conf.env.append_value('CPPFLAGS', '-D_FORTIFY_SOURCE=2');
 
   # Split off debug variant before adding variant specific defines
   debug_env = conf.env.copy()
-  conf.set_env_name('debug', debug_env)
-
-  if (sys.platform.startswith("win32")):
-    # Static pthread - crashes
-    #conf.env.append_value('LINKFLAGS', '../deps/pthreads-w32/libpthreadGC2.a')
-    #debug_env.append_value('LINKFLAGS', '../deps/pthreads-w32/libpthreadGC2d.a')
-    # Pthread dll
-    conf.env.append_value('LIB', 'pthread.dll')
+  conf.set_env_name('Debug', debug_env)
 
   # Configure debug variant
-  conf.setenv('debug')
-  debug_env.set_variant('debug')
+  conf.setenv('Debug')
+  debug_env.set_variant('Debug')
   debug_env.append_value('CPPFLAGS', '-DDEBUG')
   debug_compile_flags = ['-g', '-O0', '-Wall', '-Wextra']
   debug_env.append_value('CCFLAGS', debug_compile_flags)
@@ -532,7 +536,7 @@ def configure(conf):
   conf.write_config_header("config.h")
 
   # Configure default variant
-  conf.setenv('default')
+  conf.setenv('Release')
   default_compile_flags = ['-g', '-O3']
   conf.env.append_value('CCFLAGS', default_compile_flags)
   conf.env.append_value('CXXFLAGS', default_compile_flags)
@@ -557,7 +561,7 @@ def v8_cmd(bld, variant):
 
   toolchain = "gcc"
 
-  if variant == "default":
+  if variant == "Release":
     mode = "release"
   else:
     mode = "debug"
@@ -596,26 +600,86 @@ def build_v8(bld):
                     + bld.path.ant_glob('v8/include/*')
                     + bld.path.ant_glob('v8/src/*'),
     target        = bld.env["staticlib_PATTERN"] % "v8",
-    rule          = v8_cmd(bld, "default"),
+    rule          = v8_cmd(bld, "Release"),
     before        = "cxx",
     install_path  = None)
+
+  v8.env.env = dict(os.environ)
+  v8.env.env['CC'] = sh_escape(bld.env['CC'][0])
+  v8.env.env['CXX'] = sh_escape(bld.env['CXX'][0])
+
   v8.uselib = "EXECINFO"
   bld.env["CPPPATH_V8"] = "deps/v8/include"
-  t = join(bld.srcnode.abspath(bld.env_of_name("default")), v8.target)
-  bld.env_of_name('default').append_value("LINKFLAGS_V8", t)
-
+  t = join(bld.srcnode.abspath(bld.env_of_name("Release")), v8.target)
+  bld.env_of_name('Release').append_value("LINKFLAGS_V8", t)
 
   ### v8 debug
   if bld.env["USE_DEBUG"]:
-    v8_debug = v8.clone("debug")
-    v8_debug.rule   = v8_cmd(bld, "debug")
+    v8_debug = v8.clone("Debug")
+    v8_debug.rule   = v8_cmd(bld, "Debug")
     v8_debug.target = bld.env["staticlib_PATTERN"] % "v8_g"
     v8_debug.uselib = "EXECINFO"
     bld.env["CPPPATH_V8_G"] = "deps/v8/include"
-    t = join(bld.srcnode.abspath(bld.env_of_name("debug")), v8_debug.target)
-    bld.env_of_name('debug').append_value("LINKFLAGS_V8_G", t)
+    t = join(bld.srcnode.abspath(bld.env_of_name("Debug")), v8_debug.target)
+    bld.env_of_name('Debug').append_value("LINKFLAGS_V8_G", t)
 
   bld.install_files('${PREFIX}/include/node/', 'deps/v8/include/*.h')
+
+def sh_escape(s):
+  if sys.platform.startswith('win32'):
+    return '"' + s + '"'
+  else:
+    return s.replace("\\", "\\\\").replace("(","\\(").replace(")","\\)").replace(" ","\\ ")
+
+def uv_cmd(bld, variant):
+  srcdeps = join(bld.path.abspath(), "deps")
+  srcdir = join(srcdeps, "uv")
+  blddir = bld.srcnode.abspath(bld.env_of_name(variant)) + '/deps/uv'
+  #
+  # FIXME This is awful! We're copying the entire source directory into the
+  # build directory before each compile. This could be much improved by
+  # modifying libuv's build to send object files to a separate directory.
+  #
+  cmd = 'cp -r ' + sh_escape(srcdir)  + '/* ' + sh_escape(blddir)
+  if not sys.platform.startswith('win32'):
+    make = ('if [ -z "$NODE_MAKE" ]; then NODE_MAKE=make; fi; '
+            '$NODE_MAKE -C ' + sh_escape(blddir))
+  else:
+    make = 'make -C ' + sh_escape(blddir)
+  return '%s && (%s clean) && (%s all)' % (cmd, make, make)
+
+
+def build_uv(bld):
+  uv = bld.new_task_gen(
+    name = 'uv',
+    source = 'deps/uv/include/uv.h',
+    target = 'deps/uv/uv.a',
+    before = "cxx",
+    rule = uv_cmd(bld, 'Release')
+  )
+
+  uv.env.env = dict(os.environ)
+  uv.env.env['CC'] = sh_escape(bld.env['CC'][0])
+  uv.env.env['CXX'] = sh_escape(bld.env['CXX'][0])
+
+  t = join(bld.srcnode.abspath(bld.env_of_name("Release")), uv.target)
+  bld.env_of_name('Release').append_value("LINKFLAGS_UV", t)
+
+  if bld.env["USE_DEBUG"]:
+    uv_debug = uv.clone("Debug")
+    uv_debug.rule = uv_cmd(bld, 'Debug')
+    uv_debug.env.env = dict(os.environ)
+
+    t = join(bld.srcnode.abspath(bld.env_of_name("Debug")), uv_debug.target)
+    bld.env_of_name('Debug').append_value("LINKFLAGS_UV", t)
+
+  bld.install_files('${PREFIX}/include/node/', 'deps/uv/include/*.h')
+  bld.install_files('${PREFIX}/include/node/uv-private', 'deps/uv/include/uv-private/*.h')
+  bld.install_files('${PREFIX}/include/node/ev', 'deps/uv/src/ev/*.h')
+  bld.install_files('${PREFIX}/include/node/c-ares', """
+    deps/uv/include/ares.h
+    deps/uv/include/ares_version.h
+  """)
 
 
 def build(bld):
@@ -636,11 +700,9 @@ def build(bld):
   print "Parallel Jobs: " + str(Options.options.jobs)
   print "Product type: " + product_type
 
-  bld.add_subdirs('deps/libeio')
+  build_uv(bld)
 
   if not bld.env['USE_SHARED_V8']: build_v8(bld)
-  if not bld.env['USE_SHARED_LIBEV']: bld.add_subdirs('deps/libev')
-  if not bld.env['USE_SHARED_CARES']: bld.add_subdirs('deps/c-ares')
 
 
   ### http_parser
@@ -651,7 +713,7 @@ def build(bld):
   http_parser.target = "http_parser"
   http_parser.install_path = None
   if bld.env["USE_DEBUG"]:
-    http_parser.clone("debug")
+    http_parser.clone("Debug")
   if product_type_is_lib:
     http_parser.ccflags = '-fPIC'
 
@@ -662,12 +724,12 @@ def build(bld):
     f.close
 
   macros_loc_debug   = join(
-     bld.srcnode.abspath(bld.env_of_name("debug")),
+     bld.srcnode.abspath(bld.env_of_name("Debug")),
      "macros.py"
   )
 
   macros_loc_default = join(
-    bld.srcnode.abspath(bld.env_of_name("default")),
+    bld.srcnode.abspath(bld.env_of_name("Release")),
     "macros.py"
   )
 
@@ -724,14 +786,14 @@ def build(bld):
   # error that was had into the git commit meessage. git-blame to find out
   # where.)
   if bld.env["USE_DEBUG"]:
-    native_cc_debug = native_cc.clone("debug")
+    native_cc_debug = native_cc.clone("Debug")
     native_cc_debug.rule = javascript_in_c_debug
 
   native_cc.rule = javascript_in_c_debug
 
   if bld.env["USE_DTRACE"]:
-    dtrace = bld.new_task_gen(
-      name   = "dtrace",
+    dtrace_usdt = bld.new_task_gen(
+      name   = "dtrace_usdt",
       source = "src/node_provider.d",
       target = "src/node_provider.h",
       rule   = "%s -x nolibs -h -o ${TGT} -s ${SRC}" % (bld.env.DTRACE),
@@ -739,7 +801,7 @@ def build(bld):
     )
 
     if bld.env["USE_DEBUG"]:
-      dtrace_g = dtrace.clone("debug")
+      dtrace_usdt_g = dtrace_usdt.clone("Debug")
 
     bld.install_files('${LIBDIR}/dtrace', 'src/node.d')
 
@@ -766,8 +828,29 @@ def build(bld):
                                                   ' '.join(objs))
         Utils.exec_command(cmd)
 
+      #
+      # ustack helpers do not currently work on MacOS.  We currently only
+      # support 32-bit x86.
+      #
+      def dtrace_do_ustack(task):
+        abspath = bld.srcnode.abspath(bld.env_of_name(task.env.variant()))
+        source = task.inputs[0].srcpath(task.env)
+        target = task.outputs[0].srcpath(task.env)
+        cmd = '%s -32 -I../src -C -G -s %s -o %s' % (task.env.DTRACE, source, target)
+        Utils.exec_command(cmd)
+
+      dtrace_ustack = bld.new_task_gen(
+	name = "dtrace_ustack-postprocess",
+	source = "src/v8ustack.d",
+	target = "v8ustack.o",
+	always = True,
+	before = "cxx_link",
+	after = "cxx",
+	rule = dtrace_do_ustack
+      )
+
       dtracepost = bld.new_task_gen(
-        name   = "dtrace-postprocess",
+        name   = "dtrace_usdt-postprocess",
         source = "src/node_provider.d",
         target = "node_provider.o",
         always = True,
@@ -776,8 +859,11 @@ def build(bld):
         rule = dtrace_postprocess
       )
 
-      t = join(bld.srcnode.abspath(bld.env_of_name("default")), dtracepost.target)
-      bld.env_of_name('default').append_value('LINKFLAGS', t)
+      t = join(bld.srcnode.abspath(bld.env_of_name("Release")), dtracepost.target)
+      bld.env_of_name('Release').append_value('LINKFLAGS', t)
+
+      t = join(bld.srcnode.abspath(bld.env_of_name("Release")), dtrace_ustack.target)
+      bld.env_of_name('Release').append_value('LINKFLAGS', t)
 
       #
       # Note that for the same (mysterious) issue outlined above with respect
@@ -788,18 +874,18 @@ def build(bld):
       # LINKFLAGS_V8_G.
       #
       if bld.env["USE_DEBUG"]:
-        dtracepost_g = dtracepost.clone("debug")
+        dtracepost_g = dtracepost.clone("Debug")
         dtracepost_g.rule = dtrace_postprocess
-        t = join(bld.srcnode.abspath(bld.env_of_name("debug")), dtracepost.target)
-        bld.env_of_name("debug").append_value('LINKFLAGS_V8_G', t)
+        t = join(bld.srcnode.abspath(bld.env_of_name("Debug")), dtracepost.target)
+        bld.env_of_name("Debug").append_value('LINKFLAGS_V8_G', t)
 
 
   ### node lib
   node = bld.new_task_gen("cxx", product_type)
   node.name         = "node"
   node.target       = "node"
-  node.uselib = 'RT EV OPENSSL CARES EXECINFO DL KVM SOCKET NSL KSTAT UTIL OPROFILE'
-  node.add_objects = 'eio http_parser'
+  node.uselib = 'RT OPENSSL ZLIB CARES EXECINFO DL KVM SOCKET NSL KSTAT UTIL OPROFILE'
+  node.add_objects = 'http_parser'
   if product_type_is_lib:
     node.install_path = '${LIBDIR}'
   else:
@@ -811,27 +897,33 @@ def build(bld):
     src/node_javascript.cc
     src/node_extensions.cc
     src/node_http_parser.cc
-    src/node_net.cc
-    src/node_io_watcher.cc
     src/node_constants.cc
-    src/node_cares.cc
-    src/node_events.cc
     src/node_file.cc
-    src/node_signal_watcher.cc
-    src/node_stat_watcher.cc
-    src/node_timer.cc
     src/node_script.cc
     src/node_os.cc
     src/node_dtrace.cc
     src/node_string.cc
+    src/node_zlib.cc
+    src/timer_wrap.cc
+    src/handle_wrap.cc
+    src/stream_wrap.cc
+    src/tcp_wrap.cc
+    src/udp_wrap.cc
+    src/pipe_wrap.cc
+    src/cares_wrap.cc
+    src/tty_wrap.cc
+    src/fs_event_wrap.cc
+    src/process_wrap.cc
+    src/v8_typed_array.cc
   """
 
-  if sys.platform.startswith("win32"):
-    node.source += " src/node_stdio_win32.cc "
-    node.source += " src/node_child_process_win32.cc "
-  else:
-    node.source += " src/node_stdio.cc "
-    node.source += " src/node_child_process.cc "
+  if bld.env["USE_DTRACE"]:
+    node.source += " src/node_dtrace.cc "
+
+  if not sys.platform.startswith("win32"):
+    node.source += " src/node_signal_watcher.cc "
+    node.source += " src/node_stat_watcher.cc "
+    node.source += " src/node_io_watcher.cc "
 
   node.source += bld.env["PLATFORM_FILE"]
   if not product_type_is_lib:
@@ -841,32 +933,28 @@ def build(bld):
 
   node.includes = """
     src/
-    deps/libeio
     deps/http_parser
+    deps/uv/include
+    deps/uv/src/ev
+    deps/uv/src/ares
   """
 
   if not bld.env["USE_SHARED_V8"]: node.includes += ' deps/v8/include '
 
-  if not bld.env["USE_SHARED_LIBEV"]:
-    node.add_objects += ' ev '
-    node.includes += ' deps/libev '
+  if os.environ.has_key('RPATH'):
+    node.rpath = os.environ['RPATH']
 
-  if not bld.env["USE_SHARED_CARES"]:
-    node.add_objects += ' cares '
-    node.includes += '  deps/c-ares deps/c-ares/' + bld.env['DEST_OS'] + '-' + bld.env['DEST_CPU']
-
-  if sys.platform.startswith('cygwin'):
-    bld.env.append_value('LINKFLAGS', '-Wl,--export-all-symbols')
-    bld.env.append_value('LINKFLAGS', '-Wl,--out-implib,default/libnode.dll.a')
-    bld.env.append_value('LINKFLAGS', '-Wl,--output-def,default/libnode.def')
-    bld.install_files('${LIBDIR}', "build/default/libnode.*")
+  if (sys.platform.startswith("win32")):
+    # Static libgcc
+    bld.env.append_value('LINKFLAGS', '-static-libgcc')
+    bld.env.append_value('LINKFLAGS', '-static-libstdc++')
 
   def subflags(program):
     x = { 'CCFLAGS'   : " ".join(program.env["CCFLAGS"]).replace('"', '\\"')
         , 'CPPFLAGS'  : " ".join(program.env["CPPFLAGS"]).replace('"', '\\"')
         , 'LIBFLAGS'  : " ".join(program.env["LIBFLAGS"]).replace('"', '\\"')
         , 'PREFIX'    : safe_path(program.env["PREFIX"])
-        , 'VERSION'   : '0.4.10' # FIXME should not be hard-coded, see NODE_VERSION_STRING in src/node_version.
+        , 'VERSION'   : get_node_version()
         }
     return x
 
@@ -879,42 +967,51 @@ def build(bld):
   node_conf.install_path = '${PREFIX}/include/node'
 
   if bld.env["USE_DEBUG"]:
-    node_g = node.clone("debug")
-    node_g.target = "node_g"
-    node_g.uselib += ' V8_G'
+    node_g = node.clone("Debug")
+    node_g.target = "node"
+    node_g.uselib += ' V8_G UV '
+    node_g.install_path = None
 
-    node_conf_g = node_conf.clone("debug")
+    node_conf_g = node_conf.clone("Debug")
     node_conf_g.dict = subflags(node_g)
     node_conf_g.install_path = None
 
   # After creating the debug clone, append the V8 dep
-  node.uselib += ' V8'
+  node.uselib += ' V8 UV '
 
   bld.install_files('${PREFIX}/include/node/', """
     config.h
     src/node.h
     src/node_object_wrap.h
     src/node_buffer.h
-    src/node_events.h
     src/node_version.h
   """)
 
   # Only install the man page if it exists.
   # Do 'make doc install' to build and install it.
   if os.path.exists('doc/node.1'):
-    bld.install_files('${PREFIX}/share/man/man1/', 'doc/node.1')
+    prefix = 'bsd' in sys.platform and '${PREFIX}' or '${PREFIX}/share'
+    bld.install_files(prefix + '/man/man1/', 'doc/node.1')
 
   bld.install_files('${PREFIX}/bin/', 'tools/node-waf', chmod=0755)
   bld.install_files('${LIBDIR}/node/wafadmin', 'tools/wafadmin/*.py')
   bld.install_files('${LIBDIR}/node/wafadmin/Tools', 'tools/wafadmin/Tools/*.py')
 
-  # create a pkg-config(1) file
-  node_conf = bld.new_task_gen('subst', before="cxx")
-  node_conf.source = 'tools/nodejs.pc.in'
-  node_conf.target = 'tools/nodejs.pc'
-  node_conf.dict = subflags(node)
+  if bld.env['USE_NPM']:
+    install_npm(bld)
 
-  bld.install_files('${LIBDIR}/pkgconfig', 'tools/nodejs.pc')
+def install_npm(bld):
+  start_dir = bld.path.find_dir('deps/npm')
+  # The chmod=-1 is a Node hack. We changed WAF so that when chmod was set to
+  # -1 that the same permission in this tree are used. Necessary to get
+  # npm-cli.js to be executable without having to list every file in npm.
+  bld.install_files('${LIBDIR}/node_modules/npm',
+                    start_dir.ant_glob('**/*'),
+                    cwd=start_dir,
+                    relative_trick=True,
+                    chmod=-1)
+  bld.symlink_as('${PREFIX}/bin/npm',
+                 '../lib/node_modules/npm/bin/npm-cli.js')
 
 def shutdown():
   Options.options.debug
@@ -930,15 +1027,15 @@ def shutdown():
 
   elif not Options.commands['clean']:
     if sys.platform.startswith("win32"):
-      if os.path.exists('build/default/node.exe'):
-        os.system('cp build/default/node.exe .')
-      if os.path.exists('build/debug/node_g.exe'):
-        os.system('cp build/debug/node_g.exe .')
+      if os.path.exists('out/Release/node.exe'):
+        os.system('cp out/Release/node.exe .')
+      if os.path.exists('out/Debug/node.exe'):
+        os.system('cp out/Debug/node.exe node_g.exe')
     else:
-      if os.path.exists('build/default/node') and not os.path.exists('node'):
-        os.symlink('build/default/node', 'node')
-      if os.path.exists('build/debug/node_g') and not os.path.exists('node_g'):
-        os.symlink('build/debug/node_g', 'node_g')
+      if os.path.exists('out/Release/node') and not os.path.islink('node'):
+        os.symlink('out/Release/node', 'node')
+      if os.path.exists('out/Debug/node') and not os.path.islink('node_g'):
+        os.symlink('out/Debug/node', 'node_g')
   else:
     if sys.platform.startswith("win32"):
       if os.path.exists('node.exe'): os.unlink('node.exe')

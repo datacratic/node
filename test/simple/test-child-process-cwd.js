@@ -35,14 +35,15 @@ var returns = 0;
 function testCwd(options, forCode, forData) {
   var data = '';
 
-  var child = spawn('pwd', [], options);
+  var child = common.spawnPwd(options);
+
   child.stdout.setEncoding('utf8');
 
-  child.stdout.addListener('data', function(chunk) {
+  child.stdout.on('data', function(chunk) {
     data += chunk;
   });
 
-  child.addListener('exit', function(code, signal) {
+  child.on('exit', function(code, signal) {
     forData && assert.strictEqual(forData, data.replace(/[\s\r\n]+$/, ''));
     assert.strictEqual(forCode, code);
     returns--;
@@ -52,8 +53,13 @@ function testCwd(options, forCode, forData) {
 }
 
 // Assume these exist, and 'pwd' gives us the right directory back
-testCwd({cwd: '/dev'}, 0, '/dev');
-testCwd({cwd: '/'}, 0, '/');
+if (process.platform == 'win32') {
+  testCwd({cwd: process.env.windir}, 0, process.env.windir);
+  testCwd({cwd: 'c:\\'}, 0, 'c:\\');
+} else {
+  testCwd({cwd: '/dev'}, 0, '/dev');
+  testCwd({cwd: '/'}, 0, '/');
+}
 
 // Assume this doesn't exist, we expect exitcode=127
 testCwd({cwd: 'does-not-exist'}, 127);
@@ -67,6 +73,6 @@ testCwd({cwd: null}, 0);
 
 // Check whether all tests actually returned
 assert.notEqual(0, returns);
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.equal(0, returns);
 });

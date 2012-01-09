@@ -19,6 +19,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+
 var common = require('../common');
 var assert = require('assert');
 var path = require('path'),
@@ -40,6 +43,6 @@ var r = fs.readSync(fd, expected.length, 0, 'utf-8');
 assert.equal(r[0], expected);
 assert.equal(r[1], expected.length);
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.equal(readCalled, 1);
 });

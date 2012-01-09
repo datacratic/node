@@ -1,3 +1,24 @@
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 var common = require('../common');
 var http = require('http');
 var assert = require('assert');
@@ -6,24 +27,20 @@ var N = 20;
 var responses = 0;
 var maxQueued = 0;
 
-debugger;
-
-var agent = http.getAgent('127.0.0.1', common.PORT);
+var agent = http.globalAgent;
 agent.maxSockets = 10;
 
-var server = http.createServer(function (req, res) {
+var server = http.createServer(function(req, res) {
   res.writeHead(200);
   res.end('Hello World\n');
 });
 
-server.listen(common.PORT, "127.0.0.1", function() {
+server.listen(common.PORT, '127.0.0.1', function() {
   for (var i = 0; i < N; i++) {
     var options = {
       host: '127.0.0.1',
-      port: common.PORT,
+      port: common.PORT
     };
-
-    debugger;
 
     var req = http.get(options, function(res) {
       if (++responses == N) {
@@ -33,12 +50,12 @@ server.listen(common.PORT, "127.0.0.1", function() {
 
     assert.equal(req.agent, agent);
 
-    console.log('Socket: ' + agent.sockets.length +
+    console.log('Socket: ' + agent.sockets['127.0.0.1:' + common.PORT].length +
                 '/' + agent.maxSockets +
-                ' queued: '+ agent.queue.length);
+                ' queued: ' + (agent.requests['127.0.0.1:' + common.PORT] ? agent.requests['127.0.0.1:' + common.PORT].length : 0));
 
-    if (maxQueued < agent.queue.length)  {
-      maxQueued = agent.queue.length;
+    if (maxQueued < (agent.requests['127.0.0.1:' + common.PORT] ? agent.requests['127.0.0.1:' + common.PORT].length : 0)) {
+      maxQueued = (agent.requests['127.0.0.1:' + common.PORT] ? agent.requests['127.0.0.1:' + common.PORT].length : 0);
     }
   }
 });

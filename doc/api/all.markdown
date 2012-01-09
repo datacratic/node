@@ -1,4 +1,3 @@
-
 @include synopsis
 @include globals
 @include stdio
@@ -30,8 +29,10 @@
 @include child_processes
 @include assert
 @include tty
+@include zlib
 @include os
 @include debugger
+@include cluster
 
 # Appendixes
 @include appendix_1

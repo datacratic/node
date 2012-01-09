@@ -19,6 +19,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+
 var common = require('../common');
 var assert = require('assert');
 var fs = require('fs');
@@ -111,7 +114,7 @@ fs.stat(__filename, function(err, s) {
   }
 });
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.equal(5, success_count);
   assert.equal(false, got_error);
 });

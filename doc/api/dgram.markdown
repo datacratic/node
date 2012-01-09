@@ -1,7 +1,6 @@
 ## UDP / Datagram Sockets
 
-Datagram sockets are available through `require('dgram')`.  Datagrams are most commonly
-handled as IP/UDP messages but they can also be used over Unix domain sockets.
+Datagram sockets are available through `require('dgram')`.
 
 ### Event: 'message'
 
@@ -15,7 +14,7 @@ an object with the sender's address information and the number of bytes in the d
 `function () { }`
 
 Emitted when a socket starts listening for datagrams.  This happens as soon as UDP sockets
-are created.  Unix domain sockets do not start listening until calling `bind()` on them.
+are created.
 
 ### Event: 'close'
 
@@ -24,33 +23,25 @@ are created.  Unix domain sockets do not start listening until calling `bind()` 
 Emitted when a socket is closed with `close()`.  No new `message` events will be emitted
 on this socket.
 
+### Event: 'error'
+
+`function (exception) {}`
+
+Emitted when an error occurs.
+
+---
+
 ### dgram.createSocket(type, [callback])
 
-Creates a datagram socket of the specified types.  Valid types are:
-`udp4`, `udp6`, and `unix_dgram`.
+Creates a datagram socket of the specified types.  Valid types are `udp4`
+and `udp6`.
 
 Takes an optional callback which is added as a listener for `message` events.
 
-### dgram.send(buf, offset, length, path, [callback])
-
-For Unix domain datagram sockets, the destination address is a pathname in the filesystem.
-An optional callback may be supplied that is invoked after the `sendto` call is completed
-by the OS.  It is not safe to re-use `buf` until the callback is invoked.  Note that
-unless the socket is bound to a pathname with `bind()` there is no way to receive messages
-on this socket.
-
-Example of sending a message to syslogd on OSX via Unix domain socket `/var/run/syslog`:
-
-    var dgram = require('dgram');
-    var message = new Buffer("A message to log.");
-    var client = dgram.createSocket("unix_dgram");
-    client.send(message, 0, message.length, "/var/run/syslog",
-      function (err, bytes) {
-        if (err) {
-          throw err;
-        }
-        console.log("Wrote " + bytes + " bytes to socket.");
-    });
+Call `socket.bind` if you want to receive datagrams. `socket.bind()` will bind
+to the "all interfaces" address on a random port (it does the right thing for
+both `udp4` and `udp6` sockets). You can then retrieve the address and port
+with `socket.address().address` and `socket.address().port`.
 
 ### dgram.send(buf, offset, length, port, address, [callback])
 
@@ -61,62 +52,48 @@ re-used.  Note that DNS lookups will delay the time that a send takes place, at
 least until the next tick.  The only way to know for sure that a send has taken place
 is to use the callback.
 
+If the socket has not been previously bound with a call to `bind`, it's
+assigned a random port number and bound to the "all interfaces" address
+(0.0.0.0 for `udp4` sockets, ::0 for `udp6` sockets).
+
 Example of sending a UDP packet to a random port on `localhost`;
 
     var dgram = require('dgram');
     var message = new Buffer("Some bytes");
     var client = dgram.createSocket("udp4");
-    client.send(message, 0, message.length, 41234, "localhost");
-    client.close();
-
-
-### dgram.bind(path)
-
-For Unix domain datagram sockets, start listening for incoming datagrams on a
-socket specified by `path`. Note that clients may `send()` without `bind()`,
-but no datagrams will be received without a `bind()`.
-
-Example of a Unix domain datagram server that echoes back all messages it receives:
-
-    var dgram = require("dgram");
-    var serverPath = "/tmp/dgram_server_sock";
-    var server = dgram.createSocket("unix_dgram");
-
-    server.on("message", function (msg, rinfo) {
-      console.log("got: " + msg + " from " + rinfo.address);
-      server.send(msg, 0, msg.length, rinfo.address);
+    client.send(message, 0, message.length, 41234, "localhost", function(err, bytes) {
+      client.close();
     });
 
-    server.on("listening", function () {
-      console.log("server listening " + server.address().address);
-    })
+**A Note about UDP datagram size**
 
-    server.bind(serverPath);
+The maximum size of an `IPv4/v6` datagram depends on the `MTU` (_Maximum Transmission Unit_)
+and on the `Payload Length` field size.
 
-Example of a Unix domain datagram client that talks to this server:
+- The `Payload Length` field is `16 bits` wide, which means that a normal payload
+  cannot be larger than 64K octets including internet header and data
+  (65,507 bytes = 65,535 − 8 bytes UDP header − 20 bytes IP header);
+  this is generally true for loopback interfaces, but such long datagrams
+  are impractical for most hosts and networks.
 
-    var dgram = require("dgram");
-    var serverPath = "/tmp/dgram_server_sock";
-    var clientPath = "/tmp/dgram_client_sock";
+- The `MTU` is the largest size a given link layer technology can support for datagrams.
+  For any link, `IPv4` mandates a minimum `MTU` of `68` octets, while the recommended `MTU`
+  for IPv4 is `576` (typically recommended as the `MTU` for dial-up type applications),
+  whether they arrive whole or in fragments.
 
-    var message = new Buffer("A message at " + (new Date()));
+  For `IPv6`, the minimum `MTU` is `1280` octets, however, the mandatory minimum
+  fragment reassembly buffer size is `1500` octets.
+  The value of `68` octets is very small, since most current link layer technologies have
+  a minimum `MTU` of `1500` (like Ethernet).
 
-    var client = dgram.createSocket("unix_dgram");
-
-    client.on("message", function (msg, rinfo) {
-      console.log("got: " + msg + " from " + rinfo.address);
-    });
-
-    client.on("listening", function () {
-      console.log("client listening " + client.address().address);
-      client.send(message, 0, message.length, serverPath);
-    });
-
-    client.bind(clientPath);
+Note that it's impossible to know in advance the MTU of each link through which
+a packet might travel, and that generally sending a datagram greater than
+the (receiver) `MTU` won't work (the packet gets silently dropped, without
+informing the source that the data did not reach its intended recipient).
 
 ### dgram.bind(port, [address])
 
-For UDP sockets, listen for datagrams on a named `port` and optional `address`.  If
+For UDP sockets, listen for datagrams on a named `port` and optional `address`. If
 `address` is not specified, the OS will try to listen on all addresses.
 
 Example of a UDP server listening on port 41234:
@@ -142,14 +119,12 @@ Example of a UDP server listening on port 41234:
 
 ### dgram.close()
 
-Close the underlying socket and stop listening for data on it.  UDP sockets
-automatically listen for messages, even if they did not call `bind()`.
+Close the underlying socket and stop listening for data on it.
 
 ### dgram.address()
 
 Returns an object containing the address information for a socket.  For UDP sockets,
-this object will contain `address` and `port`.  For Unix domain sockets, it will contain
-only `address`.
+this object will contain `address` and `port`.
 
 ### dgram.setBroadcast(flag)
 

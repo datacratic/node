@@ -663,12 +663,23 @@ class Context(object):
 
   def GetVm(self, mode):
     if mode == 'debug':
-      name = 'build/debug/node_g'
+      name = 'out/Debug/node'
     else:
-      name = 'build/default/node'
+      name = 'out/Release/node'
 
-    if utils.IsWindows() and not name.endswith('.exe'):
-      name = os.path.abspath(name + '.exe')
+    # Currently GYP does not support output_dir for MSVS.
+    # http://code.google.com/p/gyp/issues/detail?id=40
+    # It will put the builds into Release/node.exe or Debug/node.exe
+    if utils.IsWindows():
+      out_dir = os.path.join(dirname(__file__), "..", "out")
+      if not exists(out_dir):
+        if mode == 'debug':
+          name = os.path.abspath('Debug/node.exe')
+        else:
+          name = os.path.abspath('Release/node.exe')
+      else:
+        name = os.path.abspath(name + '.exe')
+
     return name
 
   def GetVmCommand(self, testcase, mode):
@@ -1148,6 +1159,8 @@ def BuildOptions():
   result.add_option("--simulator", help="Run tests with architecture simulator",
       default='none')
   result.add_option("--special-command", default=None)
+  result.add_option("--use-http1", help="Pass --use-http1 switch to node",
+      default=False, action="store_true")
   result.add_option("--valgrind", help="Run tests through valgrind",
       default=False, action="store_true")
   result.add_option("--cat", help="Print the source of the tests",
@@ -1306,10 +1319,18 @@ def Main():
   shell = abspath(options.shell)
   buildspace = dirname(shell)
 
-  context = Context(workspace, buildspace, VERBOSE,
+  processor = GetSpecialCommandProcessor(options.special_command)
+  if options.use_http1:
+    def wrap(processor):
+      return lambda args: processor(args[:1] + ['--use-http1'] + args[1:])
+    processor = wrap(processor)
+
+  context = Context(workspace,
+                    buildspace,
+                    VERBOSE,
                     shell,
                     options.timeout,
-                    GetSpecialCommandProcessor(options.special_command),
+                    processor,
                     options.suppress_dialogs,
                     options.store_unexpected_output)
   # First build the required targets

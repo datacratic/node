@@ -19,6 +19,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+
 var common = require('../common');
 var assert = require('assert');
 var Buffer = require('buffer').Buffer;
@@ -57,7 +60,7 @@ function pingPongTest(port, host) {
     var buf = new Buffer('PING'),
         client = dgram.createSocket('udp4');
 
-    client.addListener('message', function(msg, rinfo) {
+    client.on('message', function(msg, rinfo) {
       console.log('client got: ' + msg +
                   ' from ' + rinfo.address + ':' + rinfo.port);
       assert.equal('PONG', msg.toString('ascii'));
@@ -68,8 +71,7 @@ function pingPongTest(port, host) {
         client.send(buf, 0, buf.length, port, 'localhost');
       } else {
         sent_final_ping = true;
-        client.send(buf, 0, buf.length, port, 'localhost');
-        process.nextTick(function() {
+        client.send(buf, 0, buf.length, port, 'localhost', function() {
           client.close();
         });
       }
@@ -105,7 +107,7 @@ pingPongTest(20990, 'localhost');
 pingPongTest(20988);
 //pingPongTest('/tmp/pingpong.sock');
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.equal(3, tests_run);
   console.log('done');
 });

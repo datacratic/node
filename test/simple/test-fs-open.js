@@ -19,9 +19,22 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+var constants = require('constants');
 var common = require('../common');
 var assert = require('assert');
 var fs = require('fs');
+
+var caughtException = false;
+try {
+  // should throw ENOENT, not EBADF
+  // see https://github.com/joyent/node/pull/1228
+  fs.openSync('/path/to/file/that/does/not/exist', 'r');
+}
+catch (e) {
+  assert.equal(e.code, 'ENOENT');
+  caughtException = true;
+}
+assert.ok(caughtException);
 
 var openFd;
 fs.open(__filename, 'r', function(err, fd) {
@@ -32,7 +45,7 @@ fs.open(__filename, 'r', function(err, fd) {
   openFd = fd;
 });
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.ok(openFd);
 });
 

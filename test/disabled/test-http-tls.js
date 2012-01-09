@@ -19,6 +19,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+
 var common = require('../common');
 var assert = require('assert');
 
@@ -108,16 +111,16 @@ var https_server = http.createServer(function(req, res) {
 https_server.setSecure(credentials);
 https_server.listen(common.PORT);
 
-https_server.addListener('listening', function() {
+https_server.on('listening', function() {
   var c = net.createConnection(common.PORT);
 
   c.setEncoding('utf8');
 
-  c.addListener('connect', function() {
+  c.on('connect', function() {
     c.setSecure(credentials);
   });
 
-  c.addListener('secure', function() {
+  c.on('secure', function() {
     var verified = c.verifyPeer();
     var peerDN = JSON.stringify(c.getPeerCertificate());
     assert.equal(verified, true);
@@ -134,7 +137,7 @@ https_server.addListener('listening', function() {
     requests_sent += 1;
   });
 
-  c.addListener('data', function(chunk) {
+  c.on('data', function(chunk) {
     server_response += chunk;
 
     if (requests_sent == 1) {
@@ -152,16 +155,16 @@ https_server.addListener('listening', function() {
 
   });
 
-  c.addListener('end', function() {
+  c.on('end', function() {
     client_got_eof = true;
   });
 
-  c.addListener('close', function() {
+  c.on('close', function() {
     assert.equal(c.readyState, 'closed');
   });
 });
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.equal(4, request_number);
   assert.equal(4, requests_sent);
 

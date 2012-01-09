@@ -19,6 +19,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+
+
 var common = require('../common');
 var assert = require('assert');
 var util = require('util'),
@@ -43,38 +46,41 @@ chargen.listen(9000, ready);
 
 // Proxy to the chargen server.
 var proxy = http.createServer(function(req, res) {
-  var c = http.createClient(9000, 'localhost');
-
   var len = parseInt(req.headers['x-len'], 10);
   assert.ok(len > 0);
 
   var sent = 0;
 
 
-  c.addListener('error', function(e) {
+  function onError(e) {
     console.log('proxy client error. sent ' + sent);
     throw e;
-  });
+  }
 
-  var proxy_req = c.request(req.method, req.url, req.headers);
-  proxy_req.addListener('response', function(proxy_res) {
+  var proxy_req = http.request({
+    host: 'localhost',
+    port: 9000,
+    method: req.method,
+    path: req.url,
+    headers: req.headers
+  }, function(proxy_res) {
     res.writeHead(proxy_res.statusCode, proxy_res.headers);
 
     var count = 0;
 
-    proxy_res.addListener('data', function(d) {
+    proxy_res.on('data', function(d) {
       if (count++ % 1000 == 0) common.print('.');
       res.write(d);
       sent += d.length;
       assert.ok(sent <= (len * chunk.length));
     });
 
-    proxy_res.addListener('end', function() {
+    proxy_res.on('end', function() {
       res.end();
     });
 
   });
-
+  proxy_req.on('error', onError);
   proxy_req.end();
 });
 proxy.listen(9001, ready);
@@ -89,16 +95,19 @@ function call_chargen(list) {
 
     var recved = 0;
 
-    var req = http.createClient(9001, 'localhost').request('/', {'x-len': len});
+    var req = http.request({
+      port: 9001,
+      host: 'localhost',
+      path: '/',
+      headers: {'x-len': len}
+    }, function(res) {
 
-    req.addListener('response', function(res) {
-
-      res.addListener('data', function(d) {
+      res.on('data', function(d) {
         recved += d.length;
         assert.ok(recved <= (len * chunk.length));
       });
 
-      res.addListener('end', function() {
+      res.on('end', function() {
         assert.ok(recved <= (len * chunk.length));
         common.debug('end for ' + len + ' chunks.');
         call_chargen(list);
@@ -115,12 +124,12 @@ function call_chargen(list) {
   }
 }
 
-serversRunning = 0;
+var serversRunning = 0;
 function ready() {
   if (++serversRunning < 2) return;
   call_chargen([100, 1000, 10000, 100000, 1000000]);
 }
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.ok(done);
 });

@@ -8,16 +8,10 @@ knowledge of several libraries:
    creating objects, calling functions, etc.  Documented mostly in the
    `v8.h` header file (`deps/v8/include/v8.h` in the Node source tree).
 
- - libev, C event loop library. Anytime one needs to wait for a file
-   descriptor to become readable, wait for a timer, or wait for a signal to
-   received one will need to interface with libev.  That is, if you perform
-   any I/O, libev will need to be used.  Node uses the `EV_DEFAULT` event
-   loop.  Documentation can be found [here](http://cvs.schmorp.de/libev/ev.html).
-
- - libeio, C thread pool library. Used to execute blocking POSIX system
-   calls asynchronously. Mostly wrappers already exist for such calls, in
-   `src/file.cc` so you will probably not need to use it. If you do need it,
-   look at the header file `deps/libeio/eio.h`.
+ - [libuv](https://github.com/joyent/libuv), C event loop library. Anytime one
+   needs to wait for a file descriptor to become readable, wait for a timer, or
+   wait for a signal to received one will need to interface with libuv. That is,
+   if you perform any I/O, libuv will need to be used.
 
  - Internal Node libraries. Most importantly is the `node::ObjectWrap`
    class which you will likely want to derive from.
@@ -28,25 +22,39 @@ Node statically compiles all its dependencies into the executable. When
 compiling your module, you don't need to worry about linking to any of these
 libraries.
 
-To get started let's make a small Addon which does the following except in
-C++:
+To get started let's make a small Addon which is the C++ equivalent of
+the following Javascript code:
 
-    exports.hello = 'world';
+    exports.hello = function() { return 'world'; };
 
 To get started we create a file `hello.cc`:
 
+    #include <node.h>
     #include <v8.h>
 
     using namespace v8;
 
-    extern "C" void
-    init (Handle<Object> target)
-    {
+    Handle<Value> Method(const Arguments& args) {
       HandleScope scope;
-      target->Set(String::New("hello"), String::New("world"));
+      return scope.Close(String::New("world"));
     }
 
-This source code needs to be built into `hello.node`, the binary Addon. To
+    void init(Handle<Object> target) {
+      NODE_SET_METHOD(target, "hello", Method);
+    }
+    NODE_MODULE(hello, init)
+
+Note that all Node addons must export an initialization function:
+
+    void Initialize (Handle<Object> target);
+    NODE_MODULE(module_name, Initialize)
+
+There is no semi-colon after `NODE_MODULE` as it's not a function (see `node.h`).
+
+The `module_name` needs to match the filename of the final binary (minus the
+.node suffix).
+
+The source code needs to be built into `hello.node`, the binary Addon. To
 do this we create a file called `wscript` which is python code and looks
 like this:
 
@@ -72,9 +80,12 @@ Running `node-waf configure build` will create a file
 `node-waf` is just [WAF](http://code.google.com/p/waf), the python-based build system. `node-waf` is
 provided for the ease of users.
 
-All Node addons must export a function called `init` with this signature:
+You can now use the binary addon in a Node project `hello.js` by pointing `require` to
+the recently built module:
 
-    extern 'C' void init (Handle<Object> target)
+    var addon = require('./build/Release/hello');
+
+    console.log(addon.hello()); // 'world'
 
 For the moment, that is all the documentation on addons. Please see
-<https://github.com/ry/node_postgres> for a real example.
+<https://github.com/pietern/hiredis-node> for a real example.

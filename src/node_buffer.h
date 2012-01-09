@@ -33,9 +33,6 @@ namespace node {
  * object in javascript. The object is not totally opaque, one can access
  * individual bytes with [] and slice it into substrings or sub-buffers
  * without copying memory.
- *
- * // return an ascii encoded string - no memory is copied
- * buffer.asciiSlice(0, 3)
  */
 
 /*
@@ -53,7 +50,7 @@ namespace node {
    Migrating code C++ Buffer code from v0.2 to v0.3 is difficult. Here are
    some tips:
     - buffer->data() calls should become Buffer::Data(buffer) calls.
-    - buffer->length() calls should become Buffer::Length(buffer) calls. 
+    - buffer->length() calls should become Buffer::Length(buffer) calls.
     - There should not be any ObjectWrap::Unwrap<Buffer>() calls. You should
       not be storing pointers to Buffer objects at all - as they are
       now considered internal structures. Instead consider making a
@@ -66,7 +63,7 @@ namespace node {
  */
 
 
-class Buffer : public ObjectWrap {
+class NODE_EXTERN Buffer: public ObjectWrap {
  public:
 
   static bool HasInstance(v8::Handle<v8::Value> val);
@@ -117,6 +114,7 @@ class Buffer : public ObjectWrap {
   static v8::Handle<v8::Value> Ucs2Write(const v8::Arguments &args);
   static v8::Handle<v8::Value> ByteLength(const v8::Arguments &args);
   static v8::Handle<v8::Value> MakeFastBuffer(const v8::Arguments &args);
+  static v8::Handle<v8::Value> Fill(const v8::Arguments &args);
   static v8::Handle<v8::Value> Copy(const v8::Arguments &args);
 
   Buffer(v8::Handle<v8::Object> wrapper, size_t length);

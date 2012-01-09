@@ -31,7 +31,6 @@
 
 #ifdef __MINGW32__
 # include "platform.h"
-# include <platform_win32_winsock.h> // htons, htonl
 #endif
 
 #ifdef __POSIX__
@@ -107,6 +106,8 @@ static size_t ByteLength (Handle<String> string, enum encoding enc) {
     return base64_decoded_size(*v, v.length());
   } else if (enc == UCS2) {
     return string->Length() * 2;
+  } else if (enc == HEX) {
+    return string->Length() / 2;
   } else {
     return string->Length();
   }
@@ -385,6 +386,27 @@ Handle<Value> Buffer::Base64Slice(const Arguments &args) {
 }
 
 
+// buffer.fill(value, start, end);
+Handle<Value> Buffer::Fill(const Arguments &args) {
+  HandleScope scope;
+
+  if (!args[0]->IsInt32()) {
+    return ThrowException(Exception::Error(String::New(
+            "value is not a number")));
+  }
+  int value = (char)args[0]->Int32Value();
+
+  Buffer *parent = ObjectWrap::Unwrap<Buffer>(args.This());
+  SLICE_ARGS(args[1], args[2])
+
+  memset( (void*)(parent->data_ + start),
+          value,
+          end - start);
+
+  return Undefined();
+}
+
+
 // var bytesCopied = buffer.copy(target, targetStart, sourceStart, sourceEnd);
 Handle<Value> Buffer::Copy(const Arguments &args) {
   HandleScope scope;
@@ -482,18 +504,11 @@ Handle<Value> Buffer::Utf8Write(const Arguments &args) {
   int written = s->WriteUtf8(p,
                              max_length,
                              &char_written,
-                             String::HINT_MANY_WRITES_EXPECTED);
+                             (String::HINT_MANY_WRITES_EXPECTED |
+                              String::NO_NULL_TERMINATION));
 
   constructor_template->GetFunction()->Set(chars_written_sym,
                                            Integer::New(char_written));
-
-  if (written > 0 && p[written-1] == '\0' && char_written == length) {
-    uint16_t last_char;
-    s->Write(&last_char, length - 1, 1, String::NO_HINTS);
-    if (last_char != 0 || written > s->Utf8Length()) {
-      written--;
-    }
-  }
 
   return scope.Close(Integer::New(written));
 }
@@ -527,7 +542,8 @@ Handle<Value> Buffer::Ucs2Write(const Arguments &args) {
   int written = s->Write(p,
                          0,
                          max_length,
-                         String::HINT_MANY_WRITES_EXPECTED);
+                         (String::HINT_MANY_WRITES_EXPECTED |
+                          String::NO_NULL_TERMINATION));
 
   constructor_template->GetFunction()->Set(chars_written_sym,
                                            Integer::New(written));
@@ -565,7 +581,12 @@ Handle<Value> Buffer::AsciiWrite(const Arguments &args) {
   int written = s->WriteAscii(p,
                               0,
                               max_length,
-                              String::HINT_MANY_WRITES_EXPECTED);
+                              (String::HINT_MANY_WRITES_EXPECTED |
+                               String::NO_NULL_TERMINATION));
+
+  constructor_template->GetFunction()->Set(chars_written_sym,
+                                           Integer::New(written));
+
   return scope.Close(Integer::New(written));
 }
 
@@ -653,6 +674,9 @@ Handle<Value> Buffer::Base64Write(const Arguments &args) {
     *dst++ = ((c & 0x03) << 6) | (d & 0x3F);
   }
 
+  constructor_template->GetFunction()->Set(chars_written_sym,
+                                           Integer::New(s.length()));
+
   return scope.Close(Integer::New(dst - start));
 }
 
@@ -678,9 +702,15 @@ Handle<Value> Buffer::BinaryWrite(const Arguments &args) {
 
   char *p = (char*)buffer->data_ + offset;
 
-  size_t towrite = MIN((unsigned long) s->Length(), buffer->length_ - offset);
+  size_t max_length = args[2]->IsUndefined() ? buffer->length_ - offset
+                                             : args[2]->Uint32Value();
+  max_length = MIN(s->Length(), MIN(buffer->length_ - offset, max_length));
 
-  int written = DecodeWrite(p, towrite, s, BINARY);
+  int written = DecodeWrite(p, max_length, s, BINARY);
+
+  constructor_template->GetFunction()->Set(chars_written_sym,
+                                           Integer::New(written));
+
   return scope.Close(Integer::New(written));
 }
 
@@ -762,6 +792,7 @@ void Buffer::Initialize(Handle<Object> target) {
   NODE_SET_PROTOTYPE_METHOD(constructor_template, "binaryWrite", Buffer::BinaryWrite);
   NODE_SET_PROTOTYPE_METHOD(constructor_template, "base64Write", Buffer::Base64Write);
   NODE_SET_PROTOTYPE_METHOD(constructor_template, "ucs2Write", Buffer::Ucs2Write);
+  NODE_SET_PROTOTYPE_METHOD(constructor_template, "fill", Buffer::Fill);
   NODE_SET_PROTOTYPE_METHOD(constructor_template, "copy", Buffer::Copy);
 
   NODE_SET_METHOD(constructor_template->GetFunction(),
@@ -777,4 +808,4 @@ void Buffer::Initialize(Handle<Object> target) {
 
 }  // namespace node
 
-NODE_MODULE(node_buffer, node::Buffer::Initialize);
+NODE_MODULE(node_buffer, node::Buffer::Initialize)

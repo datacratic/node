@@ -39,19 +39,16 @@ var server = http.createServer(function(request, response) {
 
 var response = '';
 
-process.addListener('exit', function() {
+process.on('exit', function() {
   assert.equal('1\n2\n3\n', response);
 });
 
 
 server.listen(common.PORT, function() {
-  var client = http.createClient(common.PORT);
-  var req = client.request('/');
-  req.end();
-  req.addListener('response', function(res) {
+  http.get({ port: common.PORT }, function(res) {
     assert.equal(200, res.statusCode);
     res.setEncoding('ascii');
-    res.addListener('data', function(chunk) {
+    res.on('data', function(chunk) {
       response += chunk;
     });
     common.error('Got /hello response');
