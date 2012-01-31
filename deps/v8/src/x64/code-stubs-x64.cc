@@ -4610,7 +4610,7 @@ void StringHelper::GenerateHashInit(MacroAssembler* masm,
                                     Register character,
                                     Register scratch) {
   // hash = (seed + character) + ((seed + character) << 10);
-  __ LoadRoot(scratch, Heap::kStringHashSeedRootIndex);
+  __ LoadRoot(scratch, Heap::kHashSeedRootIndex);
   __ SmiToInteger32(scratch, scratch);
   __ addl(scratch, character);
   __ movl(hash, scratch);
@@ -4654,13 +4654,12 @@ void StringHelper::GenerateHashGetHash(MacroAssembler* masm,
   __ shll(scratch, Immediate(15));
   __ addl(hash, scratch);
 
-  uint32_t kHashShiftCutOffMask = (1 << (32 - String::kHashShift)) - 1;
-  __ andl(hash, Immediate(kHashShiftCutOffMask));
+  __ andl(hash, Immediate(String::kHashBitMask));
 
   // if (hash == 0) hash = 27;
   Label hash_not_zero;
   __ j(not_zero, &hash_not_zero);
-  __ Set(hash, 27);
+  __ Set(hash, StringHasher::kZeroHash);
   __ bind(&hash_not_zero);
 }
 
