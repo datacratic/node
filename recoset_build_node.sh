@@ -55,10 +55,11 @@ cp -a deps/v8/include/ ~/local/include/v8
 
 rm -rf ~/local/include/node
 rm -f ~/local/bin/node*
+rm -rf ./out ./node ./node_g
 
 
-./configure --shared-v8 --shared-v8-libname=node-v8 --shared-v8-includes=$HOME/local/include/v8 --gdb --shared-v8-libpath=$HOME/local/lib --debug --prefix=$HOME/local
-JOBS=8 make --jobs=8 JOBS=8
+JOBS=8 ./configure --shared-v8 --shared-v8-libname=node-v8 --shared-v8-includes=$HOME/local/include/v8 --gdb --shared-v8-libpath=$HOME/local/lib --debug --prefix=$HOME/local
+JOBS=8 make -k --jobs=8 JOBS=8 || JOBS=8 make -k --jobs=8 JOBS=8 || make
 echo
 echo "installing"
 make install
