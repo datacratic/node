@@ -8,10 +8,14 @@ mkdir -p ~/local/bin
 #############################################################################
 # First, build v8
 
+if [[ -z $JOBS ]]; then
+    export JOBS=8
+fi
+
 ######## RELEASE
 mkdir -p build/v8-release
 rm -f build/v8-release/libv8-*.so
-scons -j8 -C build/v8-release -Y ../../deps/v8 mode=release library=shared soname=on snapshot=on visibility=default arch=x64
+scons -j$JOBS -C build/v8-release -Y ../../deps/v8 mode=release library=shared soname=on snapshot=on visibility=default arch=x64
 
 # Install to the library directory
 NODELIB=`ls build/v8-release/libv8-*.so`
@@ -27,7 +31,7 @@ ln -sf $NODENAME ~/local/lib/libnode-v8.so
 ######## DEBUG
 mkdir -p build/v8-debug
 rm -f build/v8-debug/libv8_g*.so
-scons -j8 -C build/v8-debug -Y ../../deps/v8 mode=debug library=shared soname=on snapshot=on visibility=default arch=x64
+scons -j$JOBS -C build/v8-debug -Y ../../deps/v8 mode=debug library=shared soname=on snapshot=on visibility=default arch=x64
 
 # Install to the library directory
 NODELIBG=`ls build/v8-debug/libv8_g-*.so`
@@ -57,9 +61,9 @@ rm -rf ~/local/include/node
 rm -f ~/local/bin/node*
 rm -rf ./out ./node ./node_g
 
-
-JOBS=8 ./configure --shared-v8 --shared-v8-libname=node-v8 --shared-v8-includes=$HOME/local/include/v8 --gdb --shared-v8-libpath=$HOME/local/lib --debug --prefix=$HOME/local
-JOBS=8 make -k --jobs=8 JOBS=8 || JOBS=8 make -k --jobs=8 JOBS=8 || make
+./configure --shared-v8 --shared-v8-libname=node-v8 --shared-v8-includes=$HOME/local/include/v8 --gdb --shared-v8-libpath=$HOME/local/lib --debug --prefix=$HOME/local
+# The makefile is not multi-job safe so we have to execute it more then once to ensure that everything is properly built.
+make -k --jobs=$JOBS JOBS=$JOBS || make -k --jobs=$JOBS JOBS=$JOBS || make
 echo
 echo "installing"
 make install
