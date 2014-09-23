@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Create dirs if they're not yet there
-mkdir -p ~/local/lib
-mkdir -p ~/local/include
-mkdir -p ~/local/bin
+mkdir -p $TARGET/lib
+mkdir -p $TARGET/include
+mkdir -p $TARGET/bin
 
 #############################################################################
 # First, build v8
@@ -22,11 +22,11 @@ NODELIB=`ls build/v8-release/libv8-*.so`
 NODENAME=`basename $NODELIB`
 echo node library is $NODELIB
 echo node library name is $NODENAME
-cp -a $NODELIB ~/local/lib/
+cp -a $NODELIB $TARGET/lib/
 
 # Link to libnode-v8.so
-rm -f ~/local/lib/libnode-v8.so
-ln -sf $NODENAME ~/local/lib/libnode-v8.so
+rm -f $TARGET/lib/libnode-v8.so
+ln -sf $NODENAME $TARGET/lib/libnode-v8.so
 
 ######## DEBUG
 mkdir -p build/v8-debug
@@ -38,18 +38,18 @@ NODELIBG=`ls build/v8-debug/libv8_g-*.so`
 NODENAMEG=`basename $NODELIBG`
 echo node debug library is $NODELIBG
 echo node debug library name is $NODENAMEG
-cp -a $NODELIBG ~/local/lib/
+cp -a $NODELIBG $TARGET/lib/
 
 # Link to libnode-v8.so
-rm -f ~/local/lib/libnode-v8_g.so
-ln -sf $NODENAMEG ~/local/lib/libnode-v8_g.so
+rm -f $TARGET/lib/libnode-v8_g.so
+ln -sf $NODENAMEG $TARGET/lib/libnode-v8_g.so
 
 
 ######## COMMON
 
 # Install include files
-rm -rf ~/local/include/v8
-cp -a deps/v8/include/ ~/local/include/v8
+rm -rf $TARGET/include/v8
+cp -a deps/v8/include/ $TARGET/include/v8
 
 
 
@@ -57,16 +57,16 @@ cp -a deps/v8/include/ ~/local/include/v8
 #############################################################################
 # now build and install node
 
-rm -rf ~/local/include/node
-rm -f ~/local/bin/node*
+rm -rf $TARGET/include/node
+rm -f $TARGET/bin/node*
 rm -rf ./out ./node ./node_g
 
-./configure --shared-v8 --shared-v8-libname=node-v8 --shared-v8-includes=$HOME/local/include/v8 --gdb --shared-v8-libpath=$HOME/local/lib --debug --prefix=$HOME/local
+./configure --shared-v8 --shared-v8-libname=node-v8 --shared-v8-includes=$TARGET/include/v8 --gdb --shared-v8-libpath=$TARGET/lib --debug --prefix=$TARGET
 # The makefile is not multi-job safe so we have to execute it more then once to ensure that everything is properly built.
 make -k --jobs=$JOBS JOBS=$JOBS || make -k --jobs=$JOBS JOBS=$JOBS || make
 echo
 echo "installing"
 make install
 
-cp -a deps/v8/include/* ~/local/include/node
+cp -a deps/v8/include/* $TARGET/include/node
 
